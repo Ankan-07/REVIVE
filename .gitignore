@@ -1,0 +1,31 @@
+# --- Secrets / config ---
+.env
+.env.*
+!.env.example
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Databases (SQLite, seeded runs) ---
+*.db
+*.sqlite
+*.sqlite3
+
+# --- LangSmith trace exports ---
+traces/
+
+# --- Node / frontend ---
+node_modules/
+dist/
+.vite/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
