@@ -10,6 +10,7 @@ dependencies = [
     "alembic>=1.13.3",
     "pydantic>=2.9.2",
     "pydantic-settings>=2.6.0",
+    "email-validator>=2.0.0",
     "langsmith>=0.1.137",
     "langchain-openai>=0.2.2",
     "openai>=1.52.0",

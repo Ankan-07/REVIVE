@@ -13,6 +13,7 @@ alembic
 # --- Config / DTOs / enums ---
 pydantic
 pydantic-settings
+email-validator
 python-dotenv
 
 # --- Agent state machine + LLM ---
