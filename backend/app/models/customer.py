@@ -13,5 +13,6 @@ class Customer(Base):
     segment = Column(String, nullable=True)  # e.g., VIP, Enterprise, Standard
     ltv_amount = Column(Float, default=0.0)
     risk_score = Column(Float, default=0.0)
+    intent_score = Column(Float, default=0.0)  # §28 customer_intent: propensity to complete payment
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
