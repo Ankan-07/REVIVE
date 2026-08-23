@@ -1,0 +1,28 @@
+# Revenue Rescue Engine — backend dependencies (BUILDPLAN §2)
+# Install:  python -m venv .venv && .venv/Scripts/pip install -r requirements.txt   (Windows)
+#           python -m venv .venv && .venv/bin/pip install -r requirements.txt        (macOS/Linux)
+
+# --- API + ASGI server ---
+fastapi
+uvicorn[standard]
+
+# --- Persistence: ORM + migrations (SQLite now, Postgres later) ---
+sqlalchemy
+alembic
+
+# --- Config / DTOs / enums ---
+pydantic
+pydantic-settings
+python-dotenv
+
+# --- Agent state machine + LLM ---
+langgraph
+langgraph-checkpoint-sqlite
+langchain-openai
+openai
+
+# --- Observability: LangSmith tracing (PRD §42, Phase 0) ---
+langsmith
+
+# --- Tests ---
+pytest
