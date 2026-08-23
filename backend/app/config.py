@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     langsmith_tracing: bool = True
     database_url: str = "sqlite:///./revive.db"
     simulation_seed: int = 42
+    # Base URL the detector uses to POST events back to this same API over real HTTP.
+    internal_api_base_url: str = "http://127.0.0.1:8000"
     cors_origins: List[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 
