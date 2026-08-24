@@ -17,6 +17,7 @@ from app.models.payment import Payment
 from app.models.case import RevenueRiskCase
 from app.schemas.events import EventPayload
 from app.schemas.enums import EventType, PaymentStatus
+from app.observability import traceable
 
 
 def _scan_uncased_failed_payments(db: Session) -> List[Dict[str, Any]]:
@@ -44,6 +45,7 @@ def _scan_uncased_failed_payments(db: Session) -> List[Dict[str, Any]]:
     ]
 
 
+@traceable(name="service.detector.emit_failed_payment_events", run_type="chain")
 def emit_failed_payment_events(db: Session, client) -> Dict[str, Any]:
     """Detect uncased failed payments and emit a `PAYMENT_FAILED` event for each over HTTP.
 

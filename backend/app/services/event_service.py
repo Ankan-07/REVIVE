@@ -8,12 +8,14 @@ from app.models.audit import AuditEvent
 from app.models.payment import Payment
 from app.models.customer import Customer
 from app.simulation import payment_sim  # read-only §28 oracle (no DB mutation)
+from app.observability import traceable
 
 
 def generate_id(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex[:12]}"
 
 
+@traceable(name="service.event.initial_recovery_probability", run_type="tool")
 def _initial_recovery_probability(
     db: Session, payment: Optional[Payment], customer: Optional[Customer]
 ) -> Optional[float]:
@@ -42,6 +44,7 @@ def _initial_recovery_probability(
     return round(best, 4)
 
 
+@traceable(name="service.event.handle_event", run_type="chain")
 def handle_event(db: Session, event: EventPayload):
     # Base response
     response = {"status": "ignored", "reason": "Event type not handled"}
