@@ -24,3 +24,13 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+
+
+def get_session_factory():
+    """FastAPI dependency returning the *factory* (not a session).
+
+    The agent runner needs to open its own short-lived sessions inside the graph nodes rather than
+    borrow the request session, so the run-agent endpoint injects this instead of ``get_db``. Tests
+    override it to point at their in-memory engine.
+    """
+    return SessionLocal
