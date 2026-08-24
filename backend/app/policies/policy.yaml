@@ -1,0 +1,32 @@
+# Revenue Rescue Engine — Policy Engine rules (PRD §16).
+#
+# This is the HARD control layer. The agent proposes; these deterministic limits dispose.
+# The LLM can never edit or bypass these values (principle §12, §56). Amounts are INR.
+
+payment:
+  # Razorpay native dunning schedule typically retries 3 times (T+1, T+2, T+3 days).
+  max_retries: 3
+  # Polling/retry window aligns with Razorpay's 3-day (72-hour) late authorization and dunning cycle.
+  retry_window_hours: 72
+  # Minimum amount for a payment link (e.g. ₹1 for INR)
+  min_amount: 1
+
+messaging:
+  # Razorpay's Failed Payment Recovery allows for WhatsApp, Email, and SMS reminders.
+  # We restrict to 3 messages per case to avoid spamming the user over the 3-day dunning period.
+  max_messages_per_case: 3
+  # A 24-hour minimum spacing aligns with T+1, T+2, T+3 dunning retries.
+  minimum_hours_between_messages: 24
+
+discount:
+  max_percent: 10
+  max_absolute_amount: 1000
+
+human_approval:
+  # RBI guidelines and common internal controls often require human verification for large transactions.
+  # ₹1,00,000 is a standard threshold.
+  required_above_amount: 100000
+
+# Hard stop on total graph loops per case, mirrored from settings.max_agent_iterations so the
+# policy layer alone can guarantee termination (PRD §21).
+max_attempts: 6
