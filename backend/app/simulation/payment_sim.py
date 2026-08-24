@@ -21,6 +21,7 @@ from app.models.payment import Payment
 from app.models.customer import Customer
 from app.models.metric import GatewayMetric
 from app.schemas.enums import InterventionType
+from app.observability import traceable
 
 
 class PaymentNotFoundError(LookupError):
@@ -70,6 +71,7 @@ def load_gateway_rates(db: Session) -> Dict[str, float]:
     return rates
 
 
+@traceable(name="sim.simulate_payment", run_type="tool")
 def simulate_payment(db: Session, payment_id: str, action: str, attempt: int = 1) -> dict:
     """Deterministically resolve the outcome of `action` on a persisted payment.
 
