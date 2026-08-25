@@ -1,7 +1,7 @@
 """${message}
 
 Revision ID: ${up_revision}
-Revises: ${down_revision | repr, empty}
+Revises: ${repr(down_revision)}
 Create Date: ${create_date}
 
 """

@@ -9,13 +9,15 @@ conditional edge (see :func:`app.agent.graph.route_after_policy`):
 """
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Dict
 
 from app.agent.nodes.common import RunnableConfig, log_decision, open_session
 from app.audit import recorder
+from app.models.audit import AuditEvent
 from app.observability import traceable
 from app.policies import engine as policy_engine
-from app.schemas.enums import CaseStatus
+from app.schemas.enums import CaseStatus, InterventionType
 from app.services import case_service
 
 
@@ -25,13 +27,46 @@ def policy_check(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any
     context = state.get("context", {})
     action = state.get("chosen_action")
     amount = context.get("amount_at_risk") or 0.0
+    ev = state.get("ev") or {}
+    discount_amount = float(ev.get("discount_amount", 0.0))
 
     with open_session(config) as db:
         case = case_service.get_case_row(db, case_id)
         attempt_count = (case.attempt_count or 0) if case else 0
 
+        now = datetime.utcnow()
+        hours_since_creation = 0.0
+        if case and case.created_at:
+            hours_since_creation = (now - case.created_at).total_seconds() / 3600.0
+
+        messaging_actions = {InterventionType.SEND_DISCOUNT_MESSAGE.value, InterventionType.SEND_REMINDER.value}
+        events = db.query(AuditEvent).filter(
+            AuditEvent.case_id == case_id,
+            AuditEvent.event_type == "TOOL_EXECUTED"
+        ).order_by(AuditEvent.created_at.desc()).all()
+
+        message_count = 0
+        last_message_time = None
+        for event in events:
+            payload = event.payload_json or {}
+            event_action = payload.get("action")
+            if event_action in messaging_actions:
+                message_count += 1
+                if last_message_time is None:
+                    last_message_time = event.created_at
+        
+        hours_since_last_message = None
+        if last_message_time:
+            hours_since_last_message = (now - last_message_time).total_seconds() / 3600.0
+
         decision = policy_engine.evaluate(
-            action, amount_at_risk=amount, attempt_count=attempt_count
+            action,
+            amount_at_risk=amount,
+            attempt_count=attempt_count,
+            message_count=message_count,
+            hours_since_creation=hours_since_creation,
+            hours_since_last_message=hours_since_last_message,
+            discount_amount=discount_amount,
         )
         policy_payload = decision.model_dump()
 

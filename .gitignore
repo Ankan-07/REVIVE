@@ -31,4 +31,6 @@ dist/
 Thumbs.db
 
 # --- Generated Docs ---
-technical_overview.txt
+technical_overview.md
+BUILDPLAN.md
+prd.md
