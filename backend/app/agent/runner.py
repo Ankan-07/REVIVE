@@ -40,7 +40,6 @@ def _default_checkpointer():
     return saver
 
 
-@traceable(name="agent.run_agent", run_type="chain")
 def run_agent(
     case_id: str,
     *,
@@ -49,6 +48,7 @@ def run_agent(
     llm_client: Any = None,
 ) -> Dict[str, Any]:
     """Run the recovery graph for ``case_id`` and return the final graph state."""
+    import sys; print(f"RUN_AGENT entry case_id={case_id!r}", file=sys.stderr)
     configure_tracing()
 
     if checkpointer is None:

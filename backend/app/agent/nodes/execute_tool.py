@@ -20,7 +20,11 @@ from app.tools.payment_tools import TOOL_FOR_ACTION
 
 @traceable(name="node.execute_tool", run_type="chain")
 def execute_tool(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
-    case_id = state["case_id"]
+    # runner.py sets thread_id=case_id; @traceable can corrupt state["case_id"] (injecting a
+    # LangSmith run_id) in the full-stack API test, so we prefer the config thread_id.
+    configurable = (config or {}).get("configurable", {})
+    case_id = configurable.get("thread_id") or state["case_id"]
+    import sys; print(f"EXEC thread_id={configurable.get('thread_id')!r} state_case_id={state.get('case_id')!r} → using case_id={case_id!r}", file=sys.stderr)
     action = state.get("chosen_action")
 
     with open_session(config) as db:
@@ -35,13 +39,13 @@ def execute_tool(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any
                 detail=f"no tool registered for action {action}",
             )
         else:
-            result = tool(db, case_id=case_id, payment_id=payment_id, attempt=attempt_number)
+            result = tool(db, case_id=case_id, payment_id=payment_id, attempt=attempt_number, caller="system")
 
         # Count the attempt regardless of success (it draws down the retry budget, PRD §16).
         new_attempt = case_service.increment_attempt(db, case_id)
         case_service.set_status(db, case_id, CaseStatus.ACTION_EXECUTING.value)
 
-        result_payload = result.model_dump()
+        result_payload = result.model_dump(mode="json")
         recorder.record(
             db,
             case_id,

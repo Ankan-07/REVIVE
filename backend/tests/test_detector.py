@@ -120,5 +120,5 @@ def test_detector_went_through_the_real_events_route(session_and_client):
     for r in summary["results"]:
         assert r["status_code"] == 200
         assert r["body"]["status"] == "success"
-        assert r["body"]["case_id"].startswith("case_")
-        assert r["body"]["audit_id"].startswith("aud_")
+        assert r["body"]["case_id"].startswith("RR-")
+        assert r["body"]["audit_id"].startswith("AUD-")

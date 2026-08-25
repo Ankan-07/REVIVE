@@ -9,10 +9,7 @@ from app.models.payment import Payment
 from app.models.customer import Customer
 from app.simulation import payment_sim  # read-only §28 oracle (no DB mutation)
 from app.observability import traceable
-
-
-def generate_id(prefix: str) -> str:
-    return f"{prefix}_{uuid.uuid4().hex[:12]}"
+from app.domain.ids import generate_id
 
 
 @traceable(name="service.event.initial_recovery_probability", run_type="tool")
@@ -82,7 +79,7 @@ def handle_event(db: Session, event: EventPayload):
 
         # Create Case
         case = RevenueRiskCase(
-            id=generate_id("case"),
+            id=generate_id("RR", db),
             customer_id=event.customer_id,
             payment_id=event.payment_id,
             case_type=CaseType.FAILED_PAYMENT.value,
@@ -97,7 +94,7 @@ def handle_event(db: Session, event: EventPayload):
 
         # Create Audit Event
         audit = AuditEvent(
-            id=generate_id("aud"),
+            id=generate_id("AUD", db),
             case_id=case.id,
             event_type="CASE_CREATED",
             actor="SYSTEM",

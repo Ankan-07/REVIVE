@@ -380,9 +380,10 @@ def api_client():
 def test_full_stack_detect_then_run_agent_recovers(api_client):
     session, client = api_client
     _seed_gateways(session)
-    session.add(Customer(id="CUS-1", name="Bob", email="b@example.com", segment="VIP",
+    # Use canonical 5-digit IDs so the Task-5.1 parameter-validation layer accepts them.
+    session.add(Customer(id="CUS-00001", name="Bob", email="b@example.com", segment="VIP",
                          ltv_amount=9000.0, risk_score=0.2, intent_score=1.0))
-    session.add(Payment(id="PAY-1", customer_id="CUS-1", amount=5000.0, currency="INR",
+    session.add(Payment(id="PAY-00001", customer_id="CUS-00001", amount=5000.0, currency="INR",
                         gateway="PAYU", status=PaymentStatus.FAILED.value, error_code="timeout",
                         attempt_count=0, method_health=1.0, recovery_roll=0.10))
     session.commit()
@@ -390,8 +391,8 @@ def test_full_stack_detect_then_run_agent_recovers(api_client):
     # Real event route creates the case (DETECTED).
     created = client.post("/events/", json={
         "event_type": "PAYMENT_FAILED",
-        "customer_id": "CUS-1",
-        "payment_id": "PAY-1",
+        "customer_id": "CUS-00001",
+        "payment_id": "PAY-00001",
         "amount": 5000.0,
         "currency": "INR",
     })
