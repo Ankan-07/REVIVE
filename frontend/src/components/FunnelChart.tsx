@@ -1,9 +1,9 @@
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { InterventionStats } from '../api/analytics';
+import { InterventionStat } from '../api/analytics';
 
 interface FunnelChartProps {
-  data: InterventionStats[];
+  data: InterventionStat[];
 }
 
 export function FunnelChart({ data }: FunnelChartProps) {
@@ -13,7 +13,7 @@ export function FunnelChart({ data }: FunnelChartProps) {
 
   // Format data for the chart
   const chartData = data.map(stat => ({
-    name: stat.action,
+    name: stat.intervention_type,
     count: stat.count,
     success: stat.success_count,
     rate: stat.count > 0 ? (stat.success_count / stat.count) * 100 : 0
