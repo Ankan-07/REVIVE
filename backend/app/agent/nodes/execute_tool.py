@@ -12,10 +12,10 @@ from typing import Any, Dict
 from app.agent.nodes.common import RunnableConfig, log_decision, open_session
 from app.audit import recorder
 from app.observability import traceable
-from app.schemas.enums import CaseStatus
+from app.schemas.enums import CaseStatus, CaseType
 from app.services import case_service
 from app.tools.base import ToolResult
-from app.tools.payment_tools import TOOL_FOR_ACTION
+from app.tools import TOOL_FOR_ACTION
 
 
 @traceable(name="node.execute_tool", run_type="chain")
@@ -29,8 +29,22 @@ def execute_tool(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any
 
     with open_session(config) as db:
         case = case_service.get_case_row(db, case_id)
-        payment_id = case.payment_id if case else None
         attempt_number = (case.attempt_count or 0) + 1 if case else 1
+        caller = configurable.get("caller") or state.get("caller") or "system"
+        
+        context = state.get("context", {})
+        kwargs = {
+            "case_id": case_id,
+            "attempt": attempt_number,
+            "caller": caller,
+        }
+        
+        if case and case.case_type == CaseType.FAILED_PAYMENT.value:
+            kwargs["payment_id"] = context.get("payment_id") or case.payment_id
+        elif case and case.case_type == CaseType.ABANDONED_CHECKOUT.value:
+            kwargs["checkout_id"] = context.get("checkout_id")
+        elif case and case.case_type == CaseType.OVERDUE_INVOICE.value:
+            kwargs["invoice_id"] = context.get("invoice_id")
 
         tool = TOOL_FOR_ACTION.get(action)
         if tool is None:
@@ -39,8 +53,7 @@ def execute_tool(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any
                 detail=f"no tool registered for action {action}",
             )
         else:
-            caller = configurable.get("caller") or state.get("caller") or "system"
-            result = tool(db, case_id=case_id, payment_id=payment_id, attempt=attempt_number, caller=caller)
+            result = tool(db, **kwargs)
 
         # Count the attempt regardless of success (it draws down the retry budget, PRD §16).
         new_attempt = case_service.increment_attempt(db, case_id)
