@@ -66,7 +66,15 @@ def get_case(db: Session, case_id: str) -> Optional[RevenueRiskCaseRead]:
 
 @traceable(name="service.case.list", run_type="tool")
 def list_cases(db: Session, skip: int = 0, limit: int = 100) -> List[RevenueRiskCaseRead]:
-    items = db.query(RevenueRiskCase).offset(skip).limit(limit).all()
+    # Newest first (id as a deterministic tiebreaker): keeps pagination stable and matches the
+    # dashboard's "Recent Revenue Risk Cases" intent. Without an ORDER BY the slice is arbitrary.
+    items = (
+        db.query(RevenueRiskCase)
+        .order_by(RevenueRiskCase.created_at.desc(), RevenueRiskCase.id.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
     return [RevenueRiskCaseRead.model_validate(item) for item in items]
 
 
