@@ -254,7 +254,9 @@ def test_high_value_case_escalates_without_executing(factory):
 
     final = _run(factory, case_id)  # deterministic fallback (no LLM key)
 
-    assert final["terminal_status"] == "ESCALATED"
+    # The run pauses at the escalation boundary (interrupt_before=["escalation_pause"]) for an
+    # operator; the case is not auto-closed in the same run (test_escalations covers the resume).
+    assert final["terminal_status"] is None
 
     db = factory()
     try:
@@ -265,9 +267,13 @@ def test_high_value_case_escalates_without_executing(factory):
         assert db.query(Intervention).filter(Intervention.case_id == case_id).count() == 0
         assert "TOOL_EXECUTED" not in _event_types(db, case_id)
 
-        outcome = db.query(RecoveryOutcome).filter(RecoveryOutcome.case_id == case_id).first()
-        assert outcome.outcome_type == OutcomeType.ESCALATED.value
-        assert case.net_recovered_amount == pytest.approx(0.0)
+        # No closing ledger entry yet — update_ledger runs after the operator approves/rejects.
+        assert db.query(RecoveryOutcome).filter(RecoveryOutcome.case_id == case_id).count() == 0
+
+        # A first-class escalation ticket was created for the queue.
+        from app.models.escalation import Escalation
+        esc = db.query(Escalation).filter(Escalation.case_id == case_id).first()
+        assert esc is not None and esc.status == "OPEN"
 
         # The escalation is recorded as a first-class policy decision, not a failure.
         policy_rows = (

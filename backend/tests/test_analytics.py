@@ -86,7 +86,7 @@ def test_analytics_totals_and_filtering(db_session):
         action=InterventionType.RETRY_PAYMENT.value,
         cost=10.0,
         idempotency_key="key1",
-        result={}
+        result={"success": True}  # what a real tool execution stores
     )
     record_outcome(
         db_session,
@@ -127,35 +127,48 @@ def test_analytics_totals_and_filtering(db_session):
     # 1. Test Global Aggregation
     totals = get_recovery_totals(db_session)
     assert totals.total_cases == 2
+    assert totals.total_amount_at_risk == 1500.0
     assert totals.total_gross_recovered == 1000.0
     assert totals.total_intervention_costs == 12.0
     assert totals.total_discounts == 50.0
     # Net should be 1000 - 12 - 50 = 938.0
     assert totals.total_net_recovered == 938.0
+    assert totals.recovery_rate == 0.5
+    assert totals.average_recovery_time_hours is not None
 
     interventions = get_intervention_stats(db_session).stats
     assert len(interventions) == 2
     retry_stat = next(s for s in interventions if s.intervention_type == InterventionType.RETRY_PAYMENT.value)
     assert retry_stat.count == 1
+    assert retry_stat.success_count == 1
     assert retry_stat.total_cost == 10.0
+
+    discount_stat = next(s for s in interventions if s.intervention_type == InterventionType.SEND_DISCOUNT_MESSAGE.value)
+    assert discount_stat.count == 1
+    assert discount_stat.success_count == 0  # the escalated case's discount never "succeeded"
 
     # 2. Test specific filtering by case_type
     totals_failed = get_recovery_totals(db_session, case_type=CaseType.FAILED_PAYMENT.value)
     assert totals_failed.total_cases == 1
+    assert totals_failed.total_amount_at_risk == 1000.0
     assert totals_failed.total_gross_recovered == 1000.0
     assert totals_failed.total_intervention_costs == 10.0
     assert totals_failed.total_discounts == 0.0
     assert totals_failed.total_net_recovered == 990.0
+    assert totals_failed.recovery_rate == 1.0
 
     # 3. Test specific filtering by date
     # Filter for cases created in the last 5 days (should only catch case 2)
     start_date = datetime.utcnow() - timedelta(days=5)
     totals_recent = get_recovery_totals(db_session, start_date=start_date)
     assert totals_recent.total_cases == 1
+    assert totals_recent.total_amount_at_risk == 500.0
     assert totals_recent.total_gross_recovered == 0.0
     assert totals_recent.total_intervention_costs == 2.0
     assert totals_recent.total_discounts == 50.0
     assert totals_recent.total_net_recovered == -52.0
+    assert totals_recent.recovery_rate == 0.0
+    assert totals_recent.average_recovery_time_hours is None  # nothing recovered in the window
 
 
 def test_recovery_counts_distinct_cases_not_outcome_rows(db_session):
