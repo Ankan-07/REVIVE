@@ -9,6 +9,8 @@ class SimulationRequest(BaseModel):
     customer_count: int = 50
     payment_count: int = 100
     order_count: Optional[int] = None  # None -> generator scales from customer_count
+    checkout_count: int = 30
+    invoice_count: int = 30
     emit_events: bool = False  # if True, run the detector after seeding so failures become cases
 
 
@@ -26,6 +28,8 @@ class SimulationResponse(BaseModel):
     customers_created: int
     orders_created: int = 0
     payments_created: int
+    checkouts_created: int = 0
+    invoices_created: int = 0
     cases_created: int
     failed_by_reason: Optional[Dict[str, int]] = None
     gateways: Optional[List[GatewaySnapshot]] = None
