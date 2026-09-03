@@ -67,6 +67,36 @@ Ensure `OPENAI_API_KEY` and `LANGSMITH_API_KEY` are properly set in `.env`.
 
 ---
 
+## Real Payments (Razorpay Standard Checkout, test mode)
+
+The recovery flow can be exercised with a **real** Razorpay payment instead of the deterministic
+simulator: open any `FAILED_PAYMENT` case in the dashboard and click **"Pay … now (test card)"**.
+
+1. `POST /razorpay/create-order` validates the failed payment and creates a real Razorpay order
+   (amount in paise, `receipt` = payment id).
+2. The frontend opens Razorpay's `checkout.js` modal with the returned `order_id`.
+3. On success the modal returns `(razorpay_order_id, razorpay_payment_id, razorpay_signature)`;
+   `POST /razorpay/verify-payment` verifies the HMAC-SHA256 signature server-side and — only on a
+   match — marks the payment `SUCCEEDED`, closes the case as `RECOVERED`, and writes the net
+   ledger through the same deterministic service layer the agent uses.
+
+Test mode: the repo ships `rzp_test_*` keys, so no real money moves. Pay the modal with Razorpay's
+success test card `4111 1111 1111 1111` (any future expiry, any CVV); use the cards listed in
+[Razorpay's test-cards docs](https://razorpay.com/docs/payments/payment-gateway/web-integration/standard/test-card-details/)
+to exercise the `payment.failed` path. When the Razorpay keys are unset the endpoints return `503`
+and the engine stays fully simulated (this also keeps the test suite hermetic).
+
+Env vars:
+
+```bash
+# root .env (backend only — never expose the SECRET)
+RAZORPAY_KEY_ID=rzp_test_...
+RAZORPAY_KEY_SECRET=...
+
+# frontend/.env (KEY_ID only — it is public by design)
+VITE_RAZORPAY_KEY_ID=rzp_test_...
+```
+
 ## Architecture Principles
 1. **The LLM proposes; deterministic code disposes.** LLMs diagnose and suggest candidate actions; policy engine and hard-coded rules enforce boundaries.
 2. **Service layer is the sole DB boundary.** Agent, tools, and API handlers never interact with SQLAlchemy sessions directly.
