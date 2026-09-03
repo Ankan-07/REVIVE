@@ -5,15 +5,12 @@ from sqlalchemy.orm import Session
 from app.models.invoice import Invoice
 from app.models.customer import Customer
 from app.schemas.enums import InterventionType
+from app.simulation.payment_sim import clamp01
 from app.observability import traceable
 
 
 class InvoiceNotFoundError(LookupError):
     pass
-
-
-def clamp01(x: float) -> float:
-    return max(0.0, min(1.0, x))
 
 
 @traceable(name="sim.simulate_invoice", run_type="tool")
