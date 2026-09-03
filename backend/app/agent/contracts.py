@@ -11,7 +11,7 @@ simulator and cost from the fixed cost table before any money-moving decision (p
 """
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -22,6 +22,7 @@ class Diagnosis(BaseModel):
     type: str = Field(description="Snake-case root cause, e.g. 'gateway_degradation'.")
     confidence: float = Field(ge=0.0, le=1.0, description="Calibrated confidence in the diagnosis.")
     evidence: List[str] = Field(default_factory=list, description="Concrete signals supporting it.")
+    promise_to_pay_date: Optional[str] = Field(default=None, description="ISO8601 date extracted from communications, if customer promised to pay.")
 
 
 class CandidateAction(BaseModel):
@@ -30,6 +31,7 @@ class CandidateAction(BaseModel):
     action: str = Field(description="An InterventionType value, e.g. 'SWITCH_GATEWAY'.")
     expected_recovery_probability: float = Field(ge=0.0, le=1.0)
     estimated_cost: float = Field(ge=0.0)
+    discount_amount: Optional[float] = Field(default=None, description="Amount to discount if offering a discount (e.g. SEND_DISCOUNT_MESSAGE).")
     rationale: str = ""
 
 

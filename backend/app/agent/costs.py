@@ -17,6 +17,7 @@ INTERVENTION_COSTS: dict[str, float] = {
     InterventionType.SEND_REMINDER.value: 8.0,
     InterventionType.SEND_DISCOUNT_MESSAGE.value: 10.0,
     InterventionType.OFFER_PAYMENT_PLAN.value: 12.0,
+    InterventionType.VERIFY_PROMISE.value: 2.0,
     InterventionType.ESCALATE_TO_HUMAN.value: 0.0,   # cost of human time is tracked separately
     InterventionType.NO_ACTION.value: 0.0,
 }
