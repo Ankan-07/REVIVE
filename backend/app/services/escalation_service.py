@@ -22,6 +22,7 @@ def create_escalation(
     case_id: str, 
     reason: str, 
     priority: str = "HIGH", 
+    recommended_action: Optional[str] = None,
     notes: Optional[str] = None
 ) -> Escalation:
     """Create a new escalation for a case, returning the existing one if it's already open."""
@@ -35,6 +36,7 @@ def create_escalation(
         case_id=case_id,
         reason=reason,
         priority=priority,
+        recommended_action=recommended_action,
         notes=notes,
         status="OPEN"
     )
@@ -43,11 +45,11 @@ def create_escalation(
     db.refresh(esc)
     return esc
 
-def assign_escalation(db: Session, escalation_id: str, owner: str) -> Optional[Escalation]:
+def assign_escalation(db: Session, escalation_id: str, owner_id: str) -> Optional[Escalation]:
     """Assign an open escalation to an operator."""
     esc = get_escalation(db, escalation_id)
     if esc and esc.status == "OPEN":
-        esc.owner = owner
+        esc.owner_id = owner_id
         db.commit()
         db.refresh(esc)
     return esc
@@ -57,9 +59,10 @@ def resolve_escalation(
     escalation_id: str, 
     resolution_status: str, 
     notes: Optional[str] = None
-) -> Optional[Escalation]:
-    """Resolve an escalation (e.g. APPROVED or REJECTED from the human operator)."""
+) -> tuple[Optional[Escalation], bool]:
+    """Resolve an escalation and return a boolean indicating if a state transition occurred."""
     esc = get_escalation(db, escalation_id)
+    transitioned = False
     if esc and esc.status == "OPEN":
         esc.status = resolution_status
         if notes:
@@ -69,4 +72,5 @@ def resolve_escalation(
         esc.resolved_at = datetime.utcnow()
         db.commit()
         db.refresh(esc)
-    return esc
+        transitioned = True
+    return esc, transitioned
