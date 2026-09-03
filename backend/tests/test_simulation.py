@@ -62,6 +62,22 @@ def test_same_seed_reproduces_identical_rows():
         s2.close()
 
 
+def test_rerun_on_same_db_appends_without_collision(db_session):
+    """Seeding twice into the same DB appends new rows instead of colliding on primary keys."""
+    run_simulation(db_session, seed=42, customer_count=10, payment_count=40)
+    before_payments = db_session.query(Payment).count()
+    before_gateways = db_session.query(GatewayMetric).count()
+
+    res = run_simulation(db_session, seed=7, customer_count=10, payment_count=40)
+
+    assert res["payments_created"] == 40
+    assert db_session.query(Payment).count() == before_payments + 40
+    assert db_session.query(GatewayMetric).count() == before_gateways + 3
+
+    payment_ids = [r[0] for r in db_session.query(Payment.id).all()]
+    assert len(payment_ids) == len(set(payment_ids))  # no duplicate primary keys across runs
+
+
 def test_different_seed_diverges():
     s1 = _fresh_session()
     s2 = _fresh_session()
