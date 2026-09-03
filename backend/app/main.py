@@ -2,7 +2,7 @@ import app.observability  # Ensure observability env vars set on startup
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.api import health, simulation, events, cases, escalations, analytics, jobs
+from app.api import health, simulation, events, cases, escalations, analytics, jobs, checkout
 
 app = FastAPI(
     title="Revenue Rescue Engine API",
@@ -25,6 +25,7 @@ app.include_router(cases.router)
 app.include_router(escalations.router)
 app.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
 app.include_router(jobs.router)
+app.include_router(checkout.router)
 
 
 @app.get("/")
