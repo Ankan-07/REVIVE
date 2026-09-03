@@ -2,8 +2,10 @@ import React from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getCase, getCaseAudit, runAgent } from '../api/cases';
+import { razorpayCheckoutEnabled } from '../api/checkout';
+import { RazorpayCheckout } from '../components/RazorpayCheckout';
 import { Timeline } from '../components/Timeline';
-import { ArrowLeft, Play, ShieldAlert, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Play, ShieldAlert, CheckCircle2, AlertCircle, CreditCard } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 export function CaseDetail() {
@@ -138,6 +140,33 @@ export function CaseDetail() {
               </div>
             </div>
           </div>
+
+          {/* Real Payment Collection (Razorpay Standard Checkout, test mode) */}
+          {razorpayCheckoutEnabled &&
+            caseData.case_type === 'FAILED_PAYMENT' &&
+            caseData.payment_id &&
+            !['RECOVERED', 'CLOSED_NO_RECOVERY', 'EXPIRED'].includes(caseData.status) && (
+              <div className="bg-slate-900/80 backdrop-blur border border-indigo-500/20 rounded-xl p-6 shadow-xl">
+                <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2">
+                      <CreditCard className="w-5 h-5 text-indigo-400" /> Collect Payment
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Real Razorpay Standard Checkout · test mode · payment {caseData.payment_id}
+                    </p>
+                  </div>
+                </div>
+                <RazorpayCheckout
+                  paymentId={caseData.payment_id}
+                  amountInr={caseData.amount_at_risk}
+                  onVerified={() => {
+                    queryClient.invalidateQueries({ queryKey: ['case', id] });
+                    queryClient.invalidateQueries({ queryKey: ['caseAudit', id] });
+                  }}
+                />
+              </div>
+            )}
 
           {/* Checkout Cart Contents */}
           {caseData.case_type === 'ABANDONED_CHECKOUT' && caseData.details && (
