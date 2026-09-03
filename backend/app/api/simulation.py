@@ -25,6 +25,8 @@ def trigger_simulation(request: SimulationRequest, db: Session = Depends(get_db)
         customer_count=request.customer_count,
         payment_count=request.payment_count,
         order_count=request.order_count,
+        checkout_count=request.checkout_count,
+        invoice_count=request.invoice_count,
     )
 
     # Optionally close the Phase 2->3 seam in one call: turn the seeded failures into cases by
