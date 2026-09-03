@@ -28,7 +28,16 @@ class Settings(BaseSettings):
     simulation_seed: int = 42
     # Base URL the detector uses to POST events back to this same API over real HTTP.
     internal_api_base_url: str = "http://127.0.0.1:8000"
-    cors_origins: List[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    # Vite dev server hops to the next free port (5173 -> 5174 -> ...) when one is taken, so allow
+    # the common local dev ports for both hostnames rather than pinning a single one.
+    cors_origins: List[str] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+        "http://localhost:5175",
+        "http://127.0.0.1:5175",
+    ]
 
 
 settings = Settings()
