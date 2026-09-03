@@ -55,6 +55,14 @@ def _load_env() -> None:
     load_dotenv()
 
 
+# Populate os.environ from the repo .env at import time. Without this, env-var readers such as
+# razorpay_service.is_configured() only ever saw what the shell exported (pydantic Settings loads
+# the file into its own fields, but does not set os.environ), so checkout returned 503 even with
+# keys present in .env. Loading here covers every entry point that imports observability -- which
+# main.py does first, and which every traceable service pulls in transitively.
+_load_env()
+
+
 @lru_cache(maxsize=1)
 def configure_tracing() -> bool:
     """Enable LangSmith tracing if an API key is available. Idempotent.
