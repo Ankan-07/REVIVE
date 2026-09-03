@@ -36,6 +36,7 @@ def record_outcome(
         gross_recovered=gross_recovered,
         net_recovered=net,
         cost_total=cost_total,
+        discount_total=discount_total,
         verified_at=datetime.utcnow() if verified else None,
     )
     db.add(outcome)

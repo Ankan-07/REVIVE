@@ -12,5 +12,6 @@ class RecoveryOutcome(Base):
     gross_recovered = Column(Float, default=0.0)
     net_recovered = Column(Float, default=0.0)
     cost_total = Column(Float, default=0.0)
+    discount_total = Column(Float, default=0.0)
     verified_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
