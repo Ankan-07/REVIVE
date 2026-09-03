@@ -71,6 +71,18 @@ def policy_check(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any
         policy_payload = decision.model_dump()
 
         case_service.set_status(db, case_id, CaseStatus.POLICY_CHECK.value)
+        if decision.result == policy_engine.ESCALATE:
+            from app.services import escalation_service
+            escalation_service.create_escalation(
+                db,
+                case_id=case_id,
+                reason=decision.reason or "POLICY_ESCALATION",
+                priority="HIGH",
+                recommended_action=action,
+                notes=decision.detail,
+            )
+            case_service.set_status(db, case_id, CaseStatus.ESCALATED.value)
+
         recorder.record(
             db, case_id, "POLICY_CHECK", payload={"action": action, **policy_payload}
         )
@@ -88,7 +100,5 @@ def policy_check(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any
             rejected.append(action)
         return {"policy": policy_payload, "rejected_actions": rejected}
 
-    if decision.result == policy_engine.ESCALATE:
-        return {"policy": policy_payload, "terminal_status": "ESCALATED"}
-
+    # Remove terminal_status="ESCALATED", we want it to pause instead.
     return {"policy": policy_payload}

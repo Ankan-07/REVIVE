@@ -39,7 +39,8 @@ def execute_tool(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any
                 detail=f"no tool registered for action {action}",
             )
         else:
-            result = tool(db, case_id=case_id, payment_id=payment_id, attempt=attempt_number, caller="system")
+            caller = configurable.get("caller") or state.get("caller") or "system"
+            result = tool(db, case_id=case_id, payment_id=payment_id, attempt=attempt_number, caller=caller)
 
         # Count the attempt regardless of success (it draws down the retry budget, PRD §16).
         new_attempt = case_service.increment_attempt(db, case_id)

@@ -66,3 +66,45 @@ def run_agent(
         },
     }
     return graph.invoke(initial_state(case_id), config)
+
+
+def resume_agent(
+    case_id: str,
+    resolution: str,
+    *,
+    caller: str = "operator",
+    session_factory: Callable[[], Session] = SessionLocal,
+    checkpointer: Optional[object] = None,
+    llm_client: Any = None,
+) -> Dict[str, Any]:
+    """Resume an escalated/paused recovery graph execution for ``case_id``."""
+    import sys; print(f"RESUME_AGENT entry case_id={case_id!r} resolution={resolution!r} caller={caller!r}", file=sys.stderr)
+    configure_tracing()
+
+    if checkpointer is None:
+        checkpointer = _default_checkpointer()
+
+    graph = build_graph(checkpointer)
+    config = {
+        "recursion_limit": _RECURSION_LIMIT,
+        "configurable": {
+            "thread_id": case_id,
+            "session_factory": session_factory,
+            "llm_client": llm_client,
+            "caller": caller,
+            "diagnose_model": settings.diagnosis_llm_model,
+            "plan_model": settings.diagnosis_llm_model,
+        },
+    }
+
+    graph.update_state(
+        config,
+        {
+            "policy": {"result": resolution, "detail": f"{resolution} by human operator"},
+            "terminal_status": None,
+            "caller": caller,
+        },
+        as_node="policy_check",
+    )
+
+    return graph.invoke(None, config)

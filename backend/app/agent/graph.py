@@ -33,6 +33,12 @@ from app.observability import traceable
 from app.policies import engine as policy_engine
 
 
+def escalation_pause(state: AgentState) -> Dict[str, Any]:
+    """A dummy node acting as a checkpointer boundary for escalations.
+    Execution halts *before* entering this node, allowing a human operator to resume."""
+    return {}
+
+
 @traceable(name="route.after_score", run_type="chain")
 def route_after_score(state: AgentState) -> str:
     """An eligible action was chosen -> check policy; otherwise the run is terminal."""
@@ -70,6 +76,7 @@ def build_graph(checkpointer: Optional[object] = None):
     graph.add_node("plan", plan)
     graph.add_node("score_ev", score_ev)
     graph.add_node("policy_check", policy_check)
+    graph.add_node("escalation_pause", escalation_pause)
     graph.add_node("execute_tool", execute_tool)
     graph.add_node("observe_outcome", observe_outcome)
     graph.add_node("router", router)
@@ -88,8 +95,12 @@ def build_graph(checkpointer: Optional[object] = None):
     graph.add_conditional_edges(
         "policy_check",
         route_after_policy,
-        {"execute": "execute_tool", "rescore": "score_ev", "escalate": "update_ledger"},
+        {"execute": "execute_tool", "rescore": "score_ev", "escalate": "escalation_pause"},
     )
+    # The pause node routes to update_ledger by default, but it's never meant to be traversed.
+    # When a human operator approves/rejects, they resume as_node="policy_check", skipping this edge.
+    graph.add_edge("escalation_pause", "update_ledger")
+    
     graph.add_edge("execute_tool", "observe_outcome")
     graph.add_edge("observe_outcome", "router")
     graph.add_conditional_edges(
@@ -99,4 +110,4 @@ def build_graph(checkpointer: Optional[object] = None):
     )
     graph.add_edge("update_ledger", END)
 
-    return graph.compile(checkpointer=checkpointer)
+    return graph.compile(checkpointer=checkpointer, interrupt_before=["escalation_pause"])
