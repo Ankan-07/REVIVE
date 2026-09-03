@@ -14,7 +14,7 @@ import json
 from typing import Any, Dict, List
 
 PLAN_SYSTEM = (
-    "You are the planning stage of an autonomous payment-recovery agent. Given a diagnosis and a set "
+    "You are the planning stage of an autonomous revenue-recovery agent. Given a diagnosis and a set "
     "of ALLOWED recovery actions (each with a simulator-estimated recovery probability and a fixed "
     "cost), propose a ranked set of candidate actions to attempt.\n"
     "Rules:\n"
@@ -23,10 +23,11 @@ PLAN_SYSTEM = (
     "real probability from its payment simulator and the real cost from its cost table, then pick "
     "the action with the highest expected NET recovery. Do not try to game these numbers.\n"
     "3. Prefer actions that plausibly address the diagnosed root cause.\n"
-    "4. Keep rationales short and factual.\n"
+    "4. If offering a discount (e.g. SEND_DISCOUNT_MESSAGE), specify the proposed discount amount in `discount_amount`.\n"
+    "5. Keep rationales short and factual.\n"
     "Respond with ONLY a JSON object of the form "
     '{"candidate_actions": [{"action": <ALLOWED_ACTION>, '
-    '"expected_recovery_probability": <float 0..1>, "estimated_cost": <float>=0>, '
+    '"expected_recovery_probability": <float 0..1>, "estimated_cost": <float>=0>, "discount_amount": <optional float>, '
     '"rationale": <string>}], "reasoning_summary": <string>}.'
 )
 

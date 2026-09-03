@@ -10,37 +10,26 @@ import json
 from typing import Any, Dict
 
 DIAGNOSE_SYSTEM = (
-    "You are the diagnosis stage of an autonomous payment-recovery agent for an Indian SaaS/D2C "
-    "business. Given structured signals about a single FAILED payment, identify the single most "
-    "likely ROOT CAUSE of the failure.\n"
+    "You are the diagnosis stage of an autonomous revenue-recovery agent for an Indian SaaS/D2C "
+    "business. Given structured signals about a revenue leak (FAILED payment, ABANDONED checkout, "
+    "or OVERDUE invoice), identify the single most likely ROOT CAUSE of the leak.\n"
     "Rules:\n"
     "1. Diagnose only — do NOT propose or rank recovery actions (a later stage does that).\n"
     "2. Ground every claim in the signals provided. Do not invent facts or numbers.\n"
     "3. Give a calibrated confidence in [0,1]; be less confident when signals are weak or conflicting.\n"
-    "4. Common root causes: gateway_degradation, insufficient_funds, expired_or_invalid_method, "
-    "network_timeout, risk_or_fraud_block, unknown.\n"
+    "4. Common root causes for payments: gateway_degradation, insufficient_funds, expired_card, timeout.\n"
+    "5. Common root causes for checkouts: price_shock, intent_loss, technical_friction.\n"
+    "6. Common root causes for invoices: forgot_to_pay, awaiting_approval, temporary_cashflow_issue.\n"
+    "7. If the leak is an invoice and the communications array contains a customer reply promising to pay by a specific date, extract that ISO8601 date into `promise_to_pay_date`.\n"
     "Respond with ONLY a JSON object of the form "
-    '{"type": <snake_case_string>, "confidence": <float 0..1>, "evidence": [<string>, ...]}.'
+    '{"type": <snake_case_string>, "confidence": <float 0..1>, "evidence": [<string>, ...], "promise_to_pay_date": <optional_iso_date>}.'
 )
 
 
 def build_diagnose_user(context: Dict[str, Any]) -> str:
     """Render the case context into the user turn for diagnosis."""
-    facts = {
-        "amount_at_risk": context.get("amount_at_risk"),
-        "currency": context.get("currency"),
-        "error_code": context.get("error_code"),
-        "current_gateway": context.get("gateway"),
-        "current_gateway_success_rate": context.get("gateway_success_rate"),
-        "current_gateway_baseline_rate": context.get("gateway_baseline_rate"),
-        "gateway_degraded": context.get("gateway_degraded"),
-        "method_health": context.get("method_health"),
-        "customer_intent": context.get("customer_intent"),
-        "customer_segment": context.get("customer_segment"),
-        "alternative_gateways": context.get("alternative_gateways"),
-    }
     return (
-        "Diagnose the root cause of this failed payment from the following signals:\n"
-        f"{json.dumps(facts, indent=2)}\n\n"
+        f"Diagnose the root cause of this {context.get('case_type', 'revenue')} leak from the following signals:\n"
+        f"{json.dumps(context, indent=2)}\n\n"
         "Return only the JSON diagnosis object."
     )
