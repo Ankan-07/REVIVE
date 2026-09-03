@@ -1,43 +1,53 @@
 """Simulated payment-recovery tools (PRD §17, §18, §28, §38, §39).
 
-Each tool wraps the deterministic :mod:`app.simulation.payment_sim` oracle with:
+Each tool is a thin declaration over :func:`app.tools.runner.run_action_tool`, which owns the shared
+pipeline: §18 auth + parameter validation, §38 idempotent replay, pre-execution audit,
+§28 deterministic simulation, and Intervention persistence.  The only payment-specific parts are the
+oracle (:mod:`app.simulation.payment_sim`), the ``PAY-NNNNN`` entity-id format, and how a failed
+outcome is classified — from the error code stored on the ``Payment`` row, mapped through §39.
 
-1. **Auth check** (§18): :func:`~app.tools.base.require_system_context` rejects any caller
-   that is not ``"system"`` or ``"operator"`` before the DB is touched.
-2. **Parameter validation** (§18): :func:`~app.tools.base.validate_tool_params` verifies ID
-   formats and numeric constraints; failures are terminal, non-retryable.
-3. **Pre-execution audit record**: ``TOOL_VALIDATION_PASSED`` is written immediately after
-   both checks succeed, so the audit trail proves the safety boundary was enforced.
-4. **Idempotency** (§38): keyed on ``case_id:action:attempt`` — replaying the same key returns
-   the prior stored result and creates no second intervention row.
-5. **Failure classification** (§39): the simulator's ``error_code`` is mapped to a
-   :class:`~app.tools.base.FailureCategory` so the graph router can reason about *why* a
-   failure occurred without string-matching.
-
-These are the only places where "side effects" (intervention rows) are written.
+These are the only places where \"side effects\" (intervention rows) are written.
 """
 from __future__ import annotations
 
-from typing import Callable, Dict
+from typing import Callable, Dict, Optional
 
 from sqlalchemy.orm import Session
 
-from app.agent.costs import cost_of
-from app.audit import recorder
 from app.models.payment import Payment
 from app.schemas.enums import InterventionType, PaymentStatus
-from app.services import intervention_service
 from app.simulation import payment_sim
+from app.tools import runner
 from app.tools.base import (
     AuthorizationError,
     FailureCategory,
     ToolResult,
     ValidationError,
     classify_error,
-    idempotency_key,
     require_system_context,
     validate_tool_params,
 )
+
+
+# ---------------------------------------------------------------------------
+# Payment-domain outcome classification (§39)
+# ---------------------------------------------------------------------------
+def _payment_error_code_of(db: Session, sim: dict) -> Optional[str]:
+    """Failed payments report the error_code stored on the Payment row, not the sim result dict."""
+    row = db.query(Payment).filter(Payment.id == sim["payment_id"]).first()
+    return row.error_code if row else None
+
+
+def _payment_category_of(db: Session, sim: dict, error_code: Optional[str]) -> Optional[FailureCategory]:
+    return classify_error(error_code) if error_code else None
+
+
+def _payment_retryable_when_failed(db: Session, sim: dict, error_code: Optional[str]) -> bool:
+    return classify_error(error_code) == FailureCategory.RETRYABLE_SYSTEM_FAILURE
+
+
+def _payment_summary(sim: dict) -> str:
+    return f"p={sim['probability']} via {sim['gateway_used']} (roll={sim['recovery_roll']})"
 
 
 # ---------------------------------------------------------------------------
@@ -52,109 +62,23 @@ def _run_action(
     attempt: int,
     caller: str,
 ) -> ToolResult:
-    """Shared body for the payment-attempt tools.
-
-    Execution order (§18 rule: validate before touching the DB):
-
-    1. Auth check  — reject unknown callers immediately.
-    2. Param check — reject bad IDs / out-of-range numbers immediately.
-    3. Idempotency — return the prior result if this key was already executed.
-    4. Audit        — write TOOL_VALIDATION_PASSED (proves safety layer ran).
-    5. Simulate     — call the deterministic oracle.
-    6. Persist      — store the Intervention row and return ToolResult.
-    """
-    # ---- 1. Auth -------------------------------------------------------
-    try:
-        require_system_context(caller)
-    except AuthorizationError as exc:
-        return ToolResult(
-            tool=action,
-            success=False,
-            error_code="AUTH_FAILURE",
-            retryable=False,
-            detail=str(exc),
-            failure_category=FailureCategory.AUTHENTICATION_FAILURE,
-        )
-
-    # ---- 2. Parameter validation ----------------------------------------
-    try:
-        validate_tool_params(case_id=case_id, payment_id=payment_id, attempt=attempt)
-    except ValidationError as exc:
-        return ToolResult(
-            tool=action,
-            success=False,
-            error_code="PARAM_VALIDATION_FAILURE",
-            retryable=False,
-            detail=str(exc),
-            failure_category=FailureCategory.PARAM_VALIDATION_FAILURE,
-        )
-
-    # ---- 3. Idempotency -------------------------------------------------
-    key = idempotency_key(case_id, action, attempt)
-    existing = intervention_service.get_by_idempotency_key(db, case_id, key)
-    if existing is not None:
-        payload = existing.payload_json or {}
-        success = bool(payload.get("success"))
-        stored_code = payload.get("error_code")
-        return ToolResult(
-            tool=action,
-            success=success,
-            error_code=stored_code,
-            retryable=not success,
-            detail="idempotent replay of a prior attempt",
-            data={k: v for k, v in payload.items() if k != "idempotency_key"},
-            failure_category=classify_error(stored_code) if not success else None,
-        )
-
-    # ---- 4. Pre-execution audit (safety boundary proof) -----------------
-    recorder.record(
+    """Run a payment-attempt tool through the shared §18/§38/§39 pipeline."""
+    return runner.run_action_tool(
         db,
-        case_id,
-        "TOOL_VALIDATION_PASSED",
-        payload={
-            "action": action,
-            "attempt": attempt,
-            "caller": caller,
-            "idempotency_key": key,
-        },
-        # commit=True (default) so the audit row is durable before simulation runs.
-        # Using True here also avoids any session-state issues on the StaticPool shared
-        # connection used in integration tests.
-    )
-
-    # ---- 5. Simulate ----------------------------------------------------
-    try:
-        sim = payment_sim.simulate_payment(db, payment_id, action, attempt)
-    except payment_sim.PaymentNotFoundError:
-        return ToolResult(
-            tool=action,
-            success=False,
-            error_code="PAYMENT_NOT_FOUND",
-            retryable=False,
-            detail=f"payment {payment_id} not found",
-            failure_category=FailureCategory.PARAM_VALIDATION_FAILURE,
-        )
-
-    # ---- 6. Persist & return --------------------------------------------
-    intervention_service.create_executed(
-        db, case_id=case_id, action=action, cost=cost_of(action), idempotency_key=key, result=sim
-    )
-
-    success = bool(sim["success"])
-    # Classify: on success there is no failure; on failure use the payment's stored error_code
-    # (from the Payment row, not the sim dict which doesn't re-expose it) to pick the category.
-    payment_row = db.query(Payment).filter(Payment.id == payment_id).first()
-    payment_error_code = (payment_row.error_code if payment_row else None) if not success else None
-    category = classify_error(payment_error_code) if not success else None
-
-    return ToolResult(
-        tool=action,
-        success=success,
-        error_code=payment_error_code if not success else None,
-        retryable=not success and category == FailureCategory.RETRYABLE_SYSTEM_FAILURE,
-        detail=f"p={sim['probability']} via {sim['gateway_used']} (roll={sim['recovery_roll']})",
-        data=sim,
-        failure_category=category,
+        case_id=case_id,
+        entity_id=payment_id,
+        action=action,
+        attempt=attempt,
+        caller=caller,
+        entity_prefix="PAY",
+        simulate=payment_sim.simulate_payment,
+        not_found_exception=payment_sim.PaymentNotFoundError,
+        not_found_code="PAYMENT_NOT_FOUND",
+        entity_label="payment",
+        summary=_payment_summary,
+        error_code_of=_payment_error_code_of,
+        category_of=_payment_category_of,
+        retryable_when_failed=_payment_retryable_when_failed,
     )
 
 
