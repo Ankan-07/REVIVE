@@ -18,30 +18,73 @@ from app.agent.prompts.plan import PLAN_SYSTEM, build_plan_user
 from app.audit import recorder
 from app.config import settings
 from app.observability import traceable
-from app.schemas.enums import CaseStatus, InterventionType
+from app.schemas.enums import CaseStatus, InterventionType, CaseType
 from app.services import case_service
-from app.simulation import payment_sim
+from app.simulation import payment_sim, checkout_sim, invoice_sim
 
-# The payment-recovery actions the planner may choose from for a FAILED_PAYMENT case.
-_ALLOWED_ACTIONS = [
-    InterventionType.RETRY_PAYMENT.value,
-    InterventionType.SWITCH_GATEWAY.value,
-    InterventionType.CREATE_PAYMENT_LINK.value,
-]
-
-
-def _allowed_menu(db, payment_id: str) -> List[Dict[str, Any]]:
+def _allowed_menu(db, case_row, context: Dict[str, Any]) -> List[Dict[str, Any]]:
     """The allowed actions with their simulator-estimated probability and fixed cost."""
     menu: List[Dict[str, Any]] = []
-    for action in _ALLOWED_ACTIONS:
-        sim = payment_sim.simulate_payment(db, payment_id, action)
-        menu.append(
-            {
+    
+    if case_row.case_type == CaseType.FAILED_PAYMENT.value:
+        allowed = [
+            InterventionType.RETRY_PAYMENT.value,
+            InterventionType.SWITCH_GATEWAY.value,
+            InterventionType.CREATE_PAYMENT_LINK.value,
+        ]
+        payment_id = context.get("payment_id")
+        for action in allowed:
+            if not payment_id:
+                continue
+            sim = payment_sim.simulate_payment(db, payment_id, action)
+            menu.append(
+                {
+                    "action": action,
+                    "simulator_probability": sim["probability"],
+                    "cost": cost_of(action),
+                }
+            )
+            
+    elif case_row.case_type == CaseType.ABANDONED_CHECKOUT.value:
+        allowed = [
+            InterventionType.SEND_DISCOUNT_MESSAGE.value,
+            InterventionType.SEND_REMINDER.value,
+        ]
+        checkout_id = context.get("checkout_id")
+        for action in allowed:
+            prob = 0.0
+            if checkout_id:
+                try:
+                    sim = checkout_sim.simulate_checkout_action(db, checkout_id, action)
+                    prob = sim["probability"]
+                except Exception:
+                    pass
+            menu.append({
                 "action": action,
-                "simulator_probability": sim["probability"],
+                "simulator_probability": prob,
                 "cost": cost_of(action),
-            }
-        )
+            })
+            
+    elif case_row.case_type == CaseType.OVERDUE_INVOICE.value:
+        allowed = [
+            InterventionType.SEND_REMINDER.value,
+            InterventionType.VERIFY_PROMISE.value,
+        ]
+        invoice_id = context.get("invoice_id")
+        for action in allowed:
+            prob = 0.0
+            if invoice_id:
+                try:
+                    sim = invoice_sim.simulate_invoice_action(db, invoice_id, action)
+                    prob = sim["probability"]
+                except Exception:
+                    pass
+            menu.append({
+                "action": action,
+                "simulator_probability": prob,
+                "cost": cost_of(action),
+            })
+            
     return menu
 
 
@@ -73,7 +116,8 @@ def plan(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
     model = configurable(config, "plan_model", settings.diagnosis_llm_model)
 
     with open_session(config) as db:
-        menu = _allowed_menu(db, payment_id)
+        case_row = case_service.get_case_row(db, case_id)
+        menu = _allowed_menu(db, case_row, context)
 
         source = "llm"
         try:
