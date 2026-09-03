@@ -3,8 +3,8 @@ import { cn } from '../lib/utils';
 
 interface MetricCardProps extends React.HTMLAttributes<HTMLDivElement> {
   title: string;
-  value: string | number;
-  subtitle?: string;
+  value: string | number | React.ReactNode;
+  subtitle?: string | React.ReactNode;
   icon?: React.ReactNode;
   trend?: 'up' | 'down' | 'neutral';
   trendValue?: string;
