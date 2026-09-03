@@ -14,8 +14,11 @@ from app.audit import recorder
 from app.models.customer import Customer
 from app.models.metric import GatewayMetric
 from app.models.payment import Payment
+from app.models.checkout import Checkout
+from app.models.invoice import Invoice
+from app.models.communication import Communication
 from app.observability import traceable
-from app.schemas.enums import CaseStatus
+from app.schemas.enums import CaseStatus, CaseType
 from app.services import case_service
 from app.simulation import payment_sim
 
@@ -31,44 +34,80 @@ def build_context(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, An
         if case is None:
             raise LookupError(f"Case {case_id} not found")
 
-        payment = db.query(Payment).filter(Payment.id == case.payment_id).first()
         customer = db.query(Customer).filter(Customer.id == case.customer_id).first()
-        rates = payment_sim.load_gateway_rates(db)
-
-        current_gateway = payment.gateway if payment else None
-        current_rate = rates.get(current_gateway) if current_gateway else None
-
-        baseline_metric = (
-            db.query(GatewayMetric)
-            .filter(GatewayMetric.gateway_name == current_gateway)
-            .order_by(GatewayMetric.recorded_at.desc())
-            .first()
-            if current_gateway
-            else None
-        )
-        baseline_rate = baseline_metric.baseline_success_rate if baseline_metric else None
-        degraded = (
-            current_rate is not None
-            and baseline_rate is not None
-            and current_rate < baseline_rate - _DEGRADATION_MARGIN
-        )
 
         context: Dict[str, Any] = {
-            "payment_id": case.payment_id,
+            "case_type": case.case_type,
             "customer_id": case.customer_id,
             "amount_at_risk": case.amount_at_risk,
-            "currency": payment.currency if payment else None,
-            "error_code": payment.error_code if payment else None,
-            "gateway": current_gateway,
-            "gateway_success_rate": current_rate,
-            "gateway_baseline_rate": baseline_rate,
-            "gateway_degraded": bool(degraded),
-            "method_health": payment.method_health if payment else None,
             "customer_intent": customer.intent_score if customer else None,
             "customer_segment": customer.segment if customer else None,
             "customer_ltv": customer.ltv_amount if customer else None,
-            "alternative_gateways": {g: r for g, r in rates.items() if g != current_gateway},
         }
+
+        if case.case_type == CaseType.FAILED_PAYMENT.value:
+            payment = db.query(Payment).filter(Payment.id == case.payment_id).first()
+            rates = payment_sim.load_gateway_rates(db)
+
+            current_gateway = payment.gateway if payment else None
+            current_rate = rates.get(current_gateway) if current_gateway else None
+
+            baseline_metric = (
+                db.query(GatewayMetric)
+                .filter(GatewayMetric.gateway_name == current_gateway)
+                .order_by(GatewayMetric.recorded_at.desc())
+                .first()
+                if current_gateway
+                else None
+            )
+            baseline_rate = baseline_metric.baseline_success_rate if baseline_metric else None
+            degraded = (
+                current_rate is not None
+                and baseline_rate is not None
+                and current_rate < baseline_rate - _DEGRADATION_MARGIN
+            )
+
+            context.update({
+                "payment_id": case.payment_id,
+                "currency": payment.currency if payment else None,
+                "error_code": payment.error_code if payment else None,
+                "gateway": current_gateway,
+                "gateway_success_rate": current_rate,
+                "gateway_baseline_rate": baseline_rate,
+                "gateway_degraded": bool(degraded),
+                "method_health": payment.method_health if payment else None,
+                "alternative_gateways": {g: r for g, r in rates.items() if g != current_gateway},
+            })
+            
+        elif case.case_type == CaseType.ABANDONED_CHECKOUT.value:
+            checkout = db.query(Checkout).filter(
+                Checkout.customer_id == case.customer_id, 
+                Checkout.status == "ABANDONED"
+            ).order_by(Checkout.created_at.desc()).first()
+            
+            context.update({
+                "checkout_id": checkout.id if checkout else None,
+                "cart_value": checkout.cart_value if checkout else None,
+                "items": checkout.items_json if checkout else None,
+                "abandoned_at": checkout.abandoned_at.isoformat() if checkout and checkout.abandoned_at else None,
+            })
+
+        elif case.case_type == CaseType.OVERDUE_INVOICE.value:
+            invoice = db.query(Invoice).filter(
+                Invoice.customer_id == case.customer_id, 
+                Invoice.status == "OVERDUE"
+            ).order_by(Invoice.created_at.desc()).first()
+            
+            communications = db.query(Communication).filter(
+                Communication.case_id == case.id
+            ).order_by(Communication.sent_at.asc()).all()
+
+            context.update({
+                "invoice_id": invoice.id if invoice else None,
+                "due_date": invoice.due_date.isoformat() if invoice and invoice.due_date else None,
+                "invoice_amount": invoice.amount if invoice else None,
+                "communications": [{"channel": c.channel, "content": c.content, "sent_at": c.sent_at.isoformat()} for c in communications],
+            })
 
         case_service.set_status(db, case_id, CaseStatus.CONTEXT_BUILT.value)
         recorder.record(db, case_id, "CONTEXT_BUILT", payload=context)
