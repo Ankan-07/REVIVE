@@ -1,5 +1,6 @@
+from collections import Counter
 from datetime import datetime
-from typing import Optional
+from typing import Dict, Optional
 
 from sqlalchemy import distinct, func
 from sqlalchemy.orm import Query, Session
@@ -7,9 +8,15 @@ from sqlalchemy.orm import Query, Session
 from app.models.case import RevenueRiskCase
 from app.models.intervention import Intervention
 from app.models.outcome import RecoveryOutcome
-from app.schemas.analytics import RecoveryTotalsResponse, InterventionStatsResponse, InterventionStat, BaselineComparisonResponse, BaselineMetrics
 from app.models.simulation import SimulationRun
-from app.schemas.enums import CaseStatus
+from app.schemas.analytics import (
+    BaselineComparisonResponse,
+    BaselineMetrics,
+    InterventionStat,
+    InterventionStatsResponse,
+    RecoveryTotalsResponse,
+)
+from app.schemas.enums import CaseStatus, OutcomeType
 from app.observability import traceable
 
 
@@ -29,6 +36,53 @@ def _apply_case_filters(
     return query
 
 
+def _is_later_outcome(a: RecoveryOutcome, b: RecoveryOutcome) -> bool:
+    """True when outcome ``a`` strictly supersedes ``b`` (created_at, then id as a tie-break)."""
+    return (a.created_at, a.id) > (b.created_at, b.id)
+
+
+def _case_level_metrics(
+    db: Session,
+    start_date: Optional[datetime],
+    end_date: Optional[datetime],
+    case_type: Optional[str],
+) -> tuple:
+    """Case-level aggregates (amount at risk, recovery rate, mean recovery time).
+
+    A case can carry more than one outcome row (e.g. an escalate→resume path that closes twice), so
+    each case contributes its *latest* outcome here; the money ledger below still sums outcome rows.
+    """
+    case_rows = _apply_case_filters(
+        db.query(RevenueRiskCase, RecoveryOutcome).join(
+            RecoveryOutcome, RecoveryOutcome.case_id == RevenueRiskCase.id
+        ),
+        start_date,
+        end_date,
+        case_type,
+    ).all()
+
+    latest: Dict[str, tuple] = {}
+    for case, outcome in case_rows:
+        previous = latest.get(case.id)
+        if previous is None or _is_later_outcome(outcome, previous[1]):
+            latest[case.id] = (case, outcome)
+
+    amount_at_risk = 0.0
+    recovered_count = 0
+    recovery_hours = []
+    for case, outcome in latest.values():
+        amount_at_risk += case.amount_at_risk or 0.0
+        if outcome.outcome_type == OutcomeType.RECOVERED_FULL.value:
+            recovered_count += 1
+            closed_at = outcome.verified_at or outcome.created_at
+            if case.created_at and closed_at:
+                recovery_hours.append((closed_at - case.created_at).total_seconds() / 3600.0)
+
+    total_cases = len(latest)
+    avg_hours = sum(recovery_hours) / len(recovery_hours) if recovery_hours else None
+    return total_cases, amount_at_risk, recovered_count, avg_hours
+
+
 @traceable(name="service.analytics.get_recovery_totals", run_type="tool")
 def get_recovery_totals(
     db: Session,
@@ -36,9 +90,8 @@ def get_recovery_totals(
     end_date: Optional[datetime] = None,
     case_type: Optional[str] = None,
 ) -> RecoveryTotalsResponse:
-    # Count distinct cases, not outcome rows: a case can carry more than one outcome row, and the
-    # ledger reports closed *cases*. Discounts are summed from the stored discount_total column so
-    # the aggregate reconciles with net (net = gross − cost − discount) rather than being back-derived.
+    # Money ledger: sums over outcome rows (kept as-is so the aggregate reconciles with the stored
+    # net per outcome; net = gross − cost − discount) joined to their cases for the filters.
     query = db.query(
         func.count(distinct(RecoveryOutcome.case_id)).label("total_cases"),
         func.sum(RecoveryOutcome.gross_recovered).label("total_gross_recovered"),
@@ -50,12 +103,20 @@ def get_recovery_totals(
     query = _apply_case_filters(query, start_date, end_date, case_type)
     result = query.one()
 
+    total_cases, amount_at_risk, recovered_count, avg_hours = _case_level_metrics(
+        db, start_date, end_date, case_type
+    )
+    recovery_rate = recovered_count / max(total_cases, 1)
+
     return RecoveryTotalsResponse(
         total_cases=result.total_cases or 0,
+        total_amount_at_risk=round(amount_at_risk, 2),
         total_gross_recovered=result.total_gross_recovered or 0.0,
         total_intervention_costs=result.total_intervention_costs or 0.0,
         total_discounts=round(result.total_discounts or 0.0, 2),
         total_net_recovered=result.total_net_recovered or 0.0,
+        recovery_rate=round(recovery_rate, 4),
+        average_recovery_time_hours=round(avg_hours, 2) if avg_hours is not None else None,
     )
 
 
@@ -77,10 +138,25 @@ def get_intervention_stats(
 
     results = query.all()
 
+    # Per-type success counts, derived from the stored outcome payload (a successful intervention
+    # records ``success: true`` in its payload_json). Loaded in Python — the set is small and this
+    # stays portable across SQLite's JSON support.
+    success_rows = _apply_case_filters(
+        db.query(Intervention).join(RevenueRiskCase, Intervention.case_id == RevenueRiskCase.id),
+        start_date,
+        end_date,
+        case_type,
+    ).all()
+    success_by_type: Counter = Counter()
+    for intervention in success_rows:
+        if (intervention.payload_json or {}).get("success") is True:
+            success_by_type[intervention.intervention_type] += 1
+
     stats = [
         InterventionStat(
             intervention_type=row.intervention_type,
             count=row.count or 0,
+            success_count=success_by_type.get(row.intervention_type, 0),
             total_cost=row.total_cost or 0.0,
         )
         for row in results

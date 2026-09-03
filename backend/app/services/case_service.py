@@ -5,6 +5,9 @@ from app.schemas.case import RevenueRiskCaseCreate, RevenueRiskCaseRead
 from app.schemas.enums import CaseStatus
 from app.domain.ids import generate_id
 from app.observability import traceable
+from app.models.checkout import Checkout
+from app.models.invoice import Invoice
+from app.models.promise import PromiseToPay
 
 
 @traceable(name="service.case.create", run_type="tool")
@@ -30,7 +33,35 @@ def get_case(db: Session, case_id: str) -> Optional[RevenueRiskCaseRead]:
     db_obj = db.query(RevenueRiskCase).filter(RevenueRiskCase.id == case_id).first()
     if not db_obj:
         return None
-    return RevenueRiskCaseRead.model_validate(db_obj)
+        
+    details = None
+    if db_obj.case_type == "ABANDONED_CHECKOUT":
+        checkout = db.query(Checkout).filter(Checkout.case_id == case_id).first()
+        if checkout:
+            details = {
+                "checkout_id": checkout.id,
+                "cart_value": checkout.cart_value,
+                "abandoned_at": checkout.abandoned_at.isoformat(),
+                "items": checkout.items_json
+            }
+    elif db_obj.case_type == "OVERDUE_INVOICE":
+        invoice = db.query(Invoice).filter(Invoice.case_id == case_id).first()
+        promise = db.query(PromiseToPay).filter(PromiseToPay.case_id == case_id).order_by(PromiseToPay.created_at.desc()).first()
+        
+        details = {}
+        if invoice:
+            details["invoice_id"] = invoice.id
+            details["due_date"] = invoice.due_date.isoformat()
+            details["amount"] = invoice.amount
+        if promise:
+            details["promise_id"] = promise.id
+            details["promised_date"] = promise.promised_date.isoformat()
+            details["promise_status"] = promise.status
+            details["promised_amount"] = promise.promised_amount
+
+    case_data = RevenueRiskCaseRead.model_validate(db_obj)
+    case_data.details = details
+    return case_data
 
 
 @traceable(name="service.case.list", run_type="tool")

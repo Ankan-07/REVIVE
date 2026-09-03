@@ -1,12 +1,11 @@
-import uuid
 from typing import Optional
 from sqlalchemy.orm import Session
 from app.schemas.events import EventPayload
 from app.schemas.enums import EventType, CaseType, CaseStatus, InterventionType
 from app.models.case import RevenueRiskCase
-from app.models.audit import AuditEvent
 from app.models.payment import Payment
 from app.models.customer import Customer
+from app.audit import recorder
 from app.simulation import payment_sim  # read-only §28 oracle (no DB mutation)
 from app.observability import traceable
 from app.domain.ids import generate_id
@@ -90,23 +89,20 @@ def handle_event(db: Session, event: EventPayload):
             recovery_probability=recovery_probability,
         )
         db.add(case)
-        db.commit()
 
-        # Create Audit Event
-        audit = AuditEvent(
-            id=generate_id("AUD", db),
-            case_id=case.id,
-            event_type="CASE_CREATED",
-            actor="SYSTEM",
-            payload_json={
+        # Append the CASE_CREATED audit row through the shared recorder (one commit covers both).
+        audit = recorder.record(
+            db,
+            case.id,
+            "CASE_CREATED",
+            payload={
                 "trigger_event": event.event_type.value,
                 "payment_id": event.payment_id,
                 "initial_risk_score": risk_score,
                 "initial_recovery_probability": recovery_probability,
             },
+            actor="SYSTEM",
         )
-        db.add(audit)
-        db.commit()
 
         response = {
             "status": "success",
