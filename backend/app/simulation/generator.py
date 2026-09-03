@@ -20,6 +20,8 @@ from app.config import settings
 from app.models.customer import Customer
 from app.models.order import Order
 from app.models.payment import Payment
+from app.models.checkout import Checkout
+from app.models.invoice import Invoice
 from app.models.metric import GatewayMetric
 from app.models.simulation import SimulationRun
 from app.schemas.enums import PaymentStatus, InterventionType
@@ -46,6 +48,8 @@ def run_simulation(
     customer_count: int = 50,
     payment_count: int = 100,
     order_count: Optional[int] = None,
+    checkout_count: int = 30,
+    invoice_count: int = 30,
 ) -> Dict[str, Any]:
     seed = settings.simulation_seed if seed is None else seed
     if order_count is None:
@@ -187,6 +191,42 @@ def run_simulation(
         db.add(payment)
     db.commit()
 
+    # --- Checkouts ---
+    checkouts: List[Checkout] = []
+    for _ in range(checkout_count):
+        cust = rng.choice(customers)
+        status = rng.choices(["ABANDONED", "COMPLETED"], weights=[0.8, 0.2])[0]
+        checkout = Checkout(
+            id=sid("CHK"),
+            customer_id=cust.id,
+            cart_value=round(rng.uniform(100.0, 5000.0), 2),
+            items_json={"item_count": rng.randint(1, 4)},
+            abandoned_at=SIM_EPOCH + timedelta(days=rng.randint(0, 120), seconds=rng.randint(0, 86399)),
+            status=status,
+            created_at=SIM_EPOCH + timedelta(days=rng.randint(0, 120), seconds=rng.randint(0, 86399)),
+        )
+        checkouts.append(checkout)
+        db.add(checkout)
+    db.commit()
+
+    # --- Invoices ---
+    invoices: List[Invoice] = []
+    for _ in range(invoice_count):
+        cust = rng.choice(customers)
+        status = rng.choices(["OVERDUE", "PAID"], weights=[0.8, 0.2])[0]
+        invoice = Invoice(
+            id=sid("INV"),
+            customer_id=cust.id,
+            amount=round(rng.uniform(500.0, 20000.0), 2),
+            due_date=SIM_EPOCH + timedelta(days=rng.randint(0, 120)),
+            status=status,
+            pdf_url=f"https://example.com/invoices/{sid('INV_PDF')}.pdf",
+            created_at=SIM_EPOCH + timedelta(days=rng.randint(0, 90)),
+        )
+        invoices.append(invoice)
+        db.add(invoice)
+    db.commit()
+
     # --- Ground-truth projections over the failed payments (via the shared engine math) ---
     failed = [p for p in payments if p.status == PaymentStatus.FAILED.value]
     failed_by_reason: Dict[str, int] = {"insufficient_funds": 0, "timeout": 0, "expired_card": 0}
@@ -219,6 +259,8 @@ def run_simulation(
             "customers": customer_count,
             "orders": order_count,
             "payments": payment_count,
+            "checkouts": checkout_count,
+            "invoices": invoice_count,
             "succeeded": payment_count - len(failed),
             "failed": len(failed),
         },
@@ -238,6 +280,8 @@ def run_simulation(
             "customer_count": customer_count,
             "order_count": order_count,
             "payment_count": payment_count,
+            "checkout_count": checkout_count,
+            "invoice_count": invoice_count,
             "degraded_gateway": degraded_gateway,
         },
         metrics_json=metrics_json,
@@ -254,6 +298,8 @@ def run_simulation(
         "customers_created": customer_count,
         "orders_created": order_count,
         "payments_created": payment_count,
+        "checkouts_created": checkout_count,
+        "invoices_created": invoice_count,
         "cases_created": 0,  # cases are created by the Phase 3 event handler
         "failed_by_reason": failed_by_reason,
         "gateways": gateway_snapshot,
