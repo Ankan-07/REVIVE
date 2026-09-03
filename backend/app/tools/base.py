@@ -44,6 +44,15 @@ _ALLOWED_CALLERS = {"system", "operator"}
 # ---------------------------------------------------------------------------
 _CASE_ID_RE = re.compile(r"^RR-\d{5}$")
 _PAY_ID_RE = re.compile(r"^PAY-\d{5}$")
+_CHK_ID_RE = re.compile(r"^CHK-\d{5}$")
+_INV_ID_RE = re.compile(r"^INV-\d{5}$")
+
+# Canonical PREFIX-NNNNN format per entity kind, used by :func:`validate_entity_id`.
+_ID_PATTERNS: Dict[str, Any] = {
+    "PAY": _PAY_ID_RE,
+    "CHK": _CHK_ID_RE,
+    "INV": _INV_ID_RE,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -177,6 +186,18 @@ def validate_tool_params(
     if amount_at_risk is not None and amount_at_risk <= 0:
         raise ValidationError(
             f"amount_at_risk must be > 0, got {amount_at_risk}."
+        )
+
+
+def validate_entity_id(entity_id: str, prefix: str) -> None:
+    """Validate an entity id (payment/checkout/invoice) against its PREFIX-NNNNN format (§18).
+
+    Unknown prefixes are accepted without a format check (nothing to enforce).
+    """
+    pattern = _ID_PATTERNS.get(prefix)
+    if pattern is not None and not pattern.match(entity_id):
+        raise ValidationError(
+            f"entity_id '{entity_id}' does not match required format {prefix}-NNNNN."
         )
 
 
