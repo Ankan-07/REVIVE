@@ -89,3 +89,8 @@ class PromiseStatus(str, Enum):
     FULFILLED = "FULFILLED"
     BROKEN = "BROKEN"
     EXTENDED = "EXTENDED"
+
+
+class EscalationResolutionStatus(str, Enum):
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"

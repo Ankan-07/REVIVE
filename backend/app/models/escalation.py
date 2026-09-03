@@ -10,7 +10,8 @@ class Escalation(Base):
     case_id = Column(String, ForeignKey("revenue_risk_cases.id"), nullable=False, index=True)
     reason = Column(String, nullable=False)  # EscalationReason enum
     priority = Column(String, default="HIGH")  # Priority enum
-    owner = Column(String, nullable=True)
+    owner_id = Column(String, nullable=True)
+    recommended_action = Column(String, nullable=True)
     notes = Column(Text, nullable=True)
     status = Column(String, nullable=False, default="OPEN")  # OPEN, RESOLVED, REJECTED
     created_at = Column(DateTime, default=datetime.utcnow)
