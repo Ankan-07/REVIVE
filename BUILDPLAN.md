@@ -351,12 +351,32 @@ This phase implements the "Human-in-the-loop" mechanism. When policy dictates (e
 - **Done when:** the §53 demo flow is clickable end-to-end for failed payments.
 
 ### Phase 10 — Widen: checkout + invoice  · §9 (MVP2/3), §20
-- Extend simulator to inject checkout abandonment + overdue invoices.
-- Checkout slice: purchase-intent estimate, channel choice, **discount-vs-message economic
-  decision** (§15) — reuses the same graph with new tools/prompts.
-- Invoice slice: reminder strategy + **promise-to-pay extraction** (§20) + scheduled promise
-  verification job (broken promise → escalate).
-- **Done when:** all three leak types flow through the same graph and appear on the dashboard.
+This phase expands the engine from MVP1 (failed payments only) to handle two new revenue leak types: checkout abandonments and overdue invoices. All three leak types will flow through the same LangGraph state machine.
+
+#### Task 10.1 — Data Models & Schemas
+- **Promises to Pay**: Add the `promises_to_pay` SQLAlchemy model and migration to track customer promises.
+- **Enums**: Expand event types (`CHECKOUT_ABANDONED`, `INVOICE_OVERDUE`) and intervention types (`SEND_DISCOUNT_MESSAGE`, `SEND_REMINDER`, `VERIFY_PROMISE`).
+
+#### Task 10.2 — Simulation Expansion
+- **Checkout & Invoice Generators**: Update `backend/app/simulation/` to generate mock data for abandoned checkouts (carts/sessions) and outstanding invoices.
+
+#### Task 10.3 — Agent Graph & Prompt Updates
+- **Context Generation**: Update `build_context` node to fetch cart/invoice details.
+- **LLM Prompts**: Expand `diagnose` and `plan` prompts to understand checkout scenarios (intent estimation, discount vs. message) and invoice scenarios.
+- **Structured Outputs**: Update `contracts.py` to extract new fields like `promise_to_pay_date`.
+
+#### Task 10.4 — New Intervention Tools
+- **Checkout Tools**: Implement idempotent tools like `send_discount` and `send_reminder`.
+- **Invoice Tools**: Implement tools to register a promise-to-pay.
+
+#### Task 10.5 — Scheduled Promise Verification
+- **Verification Job**: Create a background job or endpoint in `backend/app/services/` to periodically check `promises_to_pay`. If a promised date passes without payment, automatically escalate the case.
+
+#### Task 10.6 — Dashboard Visualization
+- **UI Updates**: Update the React dashboard (`frontend/src/`) to visualize checkout and invoice leaks in charts/funnels.
+- **Case Details**: Expand the case detail view to display checkout-specific context (cart contents) and invoice context (promise-to-pay timelines).
+
+- **Done when:** All three leak types flow through the same graph, execute their specific tools, and appear correctly on the dashboard.
 
 ### Phase 11 — Evaluation, tests & polish  · §44, §55, §59
 - Structured eval suite (§44): decision, policy, stopping, escalation cases.
