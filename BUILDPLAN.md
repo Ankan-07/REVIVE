@@ -224,22 +224,111 @@ Each phase is a coherent, testable increment. "Done when" is how you know to mov
 - **Done when:** a gateway-degradation case runs end-to-end and reaches `RECOVERED` with a verified
   outcome and a full audit timeline — matching the §43 log example.
 
-### Phase 5 — Tools & policy hardening  · §17–18, §39
-- Formalize the typed tool interface: validation, auth stub, idempotency, audit, explicit failure
-  statuses (`retryable` vs not, §39).
-- Policy tests: over-limit discount rejected, retries exhausted → no retry (§44).
-- **Done when:** policy + idempotency + failure-handling tests pass.
+### Phase 5 — Tools & policy hardening  · §17–18, §39, §44
 
-### Phase 6 — Escalation & human queue  · §22, §35  ← the part you asked about
-- `escalations` table + deterministic `check_escalation()` (forced triggers) **and**
-  agent-proposed `ESCALATE_TO_HUMAN` (still policy-validated).
-- Escalation = LangGraph `interrupt()`; case → `ESCALATED`; automation halts (§21).
-- `EscalationQueue` API + React page (§35): columns Case/Customer/Amount/Reason/Priority/
-  Recommended Action/Age/Owner. Actions: approve / reject / assign / note / trigger — **each audited**.
-- **Re-entry:** human action resumes the graph via checkpointer (approve → `ACTION_EXECUTING`;
-  close → terminal). Human overrides go through the same policy + outcome verification.
-- **Done when:** a >₹1,00,000 case auto-escalates, sits in the queue, and a human "approve" resumes
-  it to a verified outcome — all in the audit trail.
+Four explicit tasks, each with a narrow scope. Nothing here touches the agent graph wiring
+(that is Phase 4); this phase makes the *existing* graph provably correct by closing the gaps
+between the PRD's safety requirements and the Phase 4 implementation.
+
+#### Task 5.1 — Tool safety layer  · §17, §18, §39
+Harden every simulated action tool so that bad inputs, wrong callers, and infrastructure
+failures are caught before any side-effect occurs.
+
+- **Auth stub**: Add a lightweight `require_system_context(caller: str)` check in
+  `tools/base.py`. Tools must be called as `caller="system"` (the graph) or
+  `caller="operator"` (human escalation). Any other value raises `AuthorizationError` and
+  the tool returns a terminal `ToolResult` with `error_code="AUTH_FAILURE"`.
+- **Parameter validation**: Validate inputs at the top of every tool before touching the DB:
+  - `case_id` matches `RR-\d{5}` pattern.
+  - `payment_id` matches `PAY-\d{5}` pattern.
+  - `attempt` is a positive integer.
+  - `amount_at_risk` (when applicable) is `> 0`.
+  Violations return `ToolResult(success=False, error_code="PARAM_VALIDATION_FAILURE", retryable=False)`.
+- **Failure classification**: Extend `ToolResult` with a `failure_category` field drawn from a
+  new `FailureCategory` enum (lives in `tools/base.py`):
+
+  | Category | Retryable | Example |
+  |---|---|---|
+  | `AUTHENTICATION_FAILURE` | No | Wrong caller context |
+  | `PARAM_VALIDATION_FAILURE` | No | Bad ID format |
+  | `RETRYABLE_SYSTEM_FAILURE` | Yes | Gateway timeout, `error_code="timeout"` |
+  | `NON_RETRYABLE_USER_FAILURE` | No | Expired card, `error_code="card_expired"` |
+  | `CUSTOMER_SIDE_FAILURE` | No | Customer dispute, `error_code="dispute"` |
+  | `POLICY_FAILURE` | No | Rejected before execution (set by policy_check node) |
+
+  The `simulate_payment` oracle already returns an `error_code`; map it to the correct
+  `FailureCategory` in `_run_action` before constructing `ToolResult`.
+- **Pre-execution audit record**: Write a `TOOL_VALIDATION_PASSED` audit event after
+  validation succeeds and before the simulation call, so the audit trail proves the check ran.
+
+#### Task 5.2 — Policy node integration  · §16
+The Phase 4 `policy_check` node calls `policy_engine.evaluate` with only `amount_at_risk`
+and `attempt_count`, leaving the messaging, time-window, and discount rules unreachable.
+Close that gap:
+
+- **Case age**: In `policy_check`, calculate `hours_since_creation` from
+  `case.created_at` to `datetime.now(UTC)` and pass it to `evaluate`.
+- **Message count & spacing**: Query `audit_events` for `TOOL_EXECUTED` rows with
+  `action IN (SEND_DISCOUNT_MESSAGE, SEND_REMINDER)` to derive `message_count` and
+  `hours_since_last_message`. Pass both to `evaluate`.
+- **Discount amount**: The `chosen_action` in the graph state may carry a `discount_amount`
+  inside `ev` (EV scoring breakdown). Extract it and pass it to `evaluate` so the engine
+  can reject over-limit discounts.
+- No changes to `policy_engine.evaluate` itself — the logic is already correct; only the
+  *caller* was missing arguments.
+
+#### Task 5.3 — Dedicated unit test suite  · §44
+Create two new test files. All tests must be hermetic (in-memory SQLite, no OpenAI).
+
+**`tests/test_policies.py`** — direct unit tests against `policy_engine.evaluate`:
+
+| Test | Given | Expected |
+|---|---|---|
+| `test_discount_over_absolute_limit_rejected` | `discount_amount=1500`, cap=₹1000 | `REJECTED`, reason `POLICY_REJECTION` |
+| `test_discount_at_limit_approved` | `discount_amount=1000`, cap=₹1000 | `APPROVED` |
+| `test_message_cap_rejected` | `message_count=3`, max=3 | `REJECTED` |
+| `test_message_spacing_rejected` | `hours_since_last_message=12`, min=24 | `REJECTED` |
+| `test_retry_window_expired_rejected` | `hours_since_creation=80`, window=72 | `REJECTED` |
+| `test_amount_threshold_escalates` | `amount_at_risk=150_000` | `ESCALATE` |
+| `test_retries_exhausted_rejected` | `attempt_count=3`, max=3 | `REJECTED` |
+| `test_min_amount_payment_link_rejected` | action=`CREATE_PAYMENT_LINK`, `amount=0.5` | `REJECTED` |
+
+**`tests/test_tools.py`** — direct unit tests for the hardened tool layer:
+
+| Test | Scenario | Expected |
+|---|---|---|
+| `test_auth_failure_wrong_caller` | `caller="untrusted"` | `ToolResult(success=False, error_code="AUTH_FAILURE")` |
+| `test_param_validation_bad_case_id` | `case_id="bad"` | `ToolResult(error_code="PARAM_VALIDATION_FAILURE")` |
+| `test_retryable_error_category` | sim returns `error_code="timeout"` | `failure_category=RETRYABLE_SYSTEM_FAILURE` |
+| `test_non_retryable_error_category` | sim returns `error_code="card_expired"` | `failure_category=NON_RETRYABLE_USER_FAILURE`, `retryable=False` |
+| `test_idempotency_replay` | same `case_id:action:attempt` called twice | second call returns prior result, 1 DB row only |
+| `test_pre_execution_audit_event_written` | valid tool call | `TOOL_VALIDATION_PASSED` appears in audit trail |
+
+**Done when:** All 14 new tests above pass alongside the existing 25-test suite (total ≥ 39 green); `policy_check` node passes `hours_since_creation`, `message_count`, `hours_since_last_message`, and `discount_amount` to `evaluate`; every tool validates auth and parameters before touching the DB.
+
+### Phase 6 — Escalation & human queue  · §22, §35
+This phase implements the "Human-in-the-loop" mechanism. When policy dictates (e.g., > ₹1,00,000) or the agent gets stuck, the autonomous loop must halt and hand over to a human operator, who can review and resume the process.
+
+#### Task 6.1 — Escalation Data Model & Service
+- **Files to create/touch:** `backend/app/models/escalation.py` (NEW), `backend/app/models/__init__.py`, `backend/app/services/escalation_service.py` (NEW).
+- **Goal:** Create the `Escalation` SQLAlchemy model (fields: `id`, `case_id`, `reason`, `priority`, `owner_id`, `status`, `recommended_action`). Create the service layer to list pending escalations and update their status (assign/resolve). Generate and apply the Alembic migration.
+
+#### Task 6.2 — API Endpoints
+- **Files to create/touch:** `backend/app/api/escalations.py` (NEW), `backend/app/main.py`.
+- **Goal:** Expose endpoints for the frontend queue: `GET /escalations` (list pending), `POST /escalations/{id}/assign` (claim a ticket), and `POST /escalations/{id}/resolve` (approve or reject the action).
+
+#### Task 6.3 — LangGraph Interruption & Re-entry
+- **Files to create/touch:** `backend/app/agent/graph.py`, `backend/app/agent/runner.py`.
+- **Goal:** When `policy_check` returns `ESCALATE`, the graph should explicitly pause (using LangGraph's `interrupt()` or checkpointer pause). The `POST /escalations/{id}/resolve` endpoint must then use the checkpointer to resume the graph execution, passing in the human's decision so it can proceed to `execute_tool` (with `caller="operator"`) or close the case.
+
+#### Task 6.4 — Frontend Escalation Queue UI
+- **Files to create/touch:** `frontend/src/api/escalations.ts` (NEW), `frontend/src/pages/EscalationQueue.tsx` (NEW), `frontend/src/App.tsx`.
+- **Goal:** Build the React page (PRD §35) with columns for Case, Customer, Amount, Reason, Priority, and Recommended Action. Add action buttons for the operator to Assign to themselves, Approve, or Reject.
+
+#### Task 6.5 — Integration Tests
+- **Files to create/touch:** `backend/tests/test_escalations.py` (NEW).
+- **Goal:** Write an end-to-end test proving that a >₹1,00,000 case auto-escalates, sits in the queue, and a simulated human "approve" API call resumes it to a verified outcome, completely logged in the audit trail.
+- **Done when:** The E2E test passes and the Escalation Queue UI successfully displays and resolves a paused case.
 
 ### Phase 7 — Revenue ledger & analytics  · §23, §36
 - Deterministic ledger: `net_recovered = recovered − intervention_cost − discount`.
