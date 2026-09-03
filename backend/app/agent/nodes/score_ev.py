@@ -1,9 +1,9 @@
 """score_ev node (PRD §15, §47 — the money math).
 
 The heart of "LLM proposes, deterministic code disposes." For every candidate the planner proposed
-that has not already been ruled out, this node recomputes the recovery probability **from the payment
-simulator** (never the LLM's number) and the cost **from the fixed cost table**, then picks the
-action with the highest expected NET recovery:
+that has not already been ruled out, this node recomputes the recovery probability from the
+per-case-type simulator menu (see :func:`app.agent.menu.allowed_menu` — never the LLM's number) and
+the cost from the fixed cost table, then picks the action with the highest expected NET recovery:
 
     expected_net = amount_at_risk × p(simulator) − cost(action)
 
@@ -14,25 +14,28 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from app.agent.costs import cost_of
+from app.agent.menu import allowed_menu
 from app.agent.nodes.common import RunnableConfig, log_decision, open_session
 from app.audit import recorder
 from app.observability import traceable
 from app.schemas.enums import CaseStatus
 from app.services import case_service
-from app.simulation import payment_sim
 
 
 @traceable(name="node.score_ev", run_type="chain")
 def score_ev(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
     case_id = state["case_id"]
-    context = state.get("context", {})
-    payment_id = context.get("payment_id")
-    amount = context.get("amount_at_risk") or 0.0
+    amount = state.get("context", {}).get("amount_at_risk") or 0.0
     rejected = set(state.get("rejected_actions", []))
     candidates = state.get("candidates", [])
 
     with open_session(config) as db:
+        case = case_service.get_case_row(db, case_id)
+        if case is None:
+            raise LookupError(f"Case {case_id} not found")
+        menu = allowed_menu(db, case, state.get("context", {}))
+        by_action = {m["action"]: m for m in menu}
+
         scored: List[Dict[str, Any]] = []
         seen = set()
         for candidate in candidates:
@@ -40,17 +43,17 @@ def score_ev(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
             if action in rejected or action in seen:
                 continue
             seen.add(action)
-            sim = payment_sim.simulate_payment(db, payment_id, action)  # read-only probability
-            probability = sim["probability"]
-            cost = cost_of(action)
-            expected_net = round(amount * probability - cost, 4)
+            item = by_action.get(action)
+            if item is None:
+                continue  # the planner only proposes allowed actions; defensive skip
+            expected_net = round(amount * item["simulator_probability"] - item["cost"], 4)
             scored.append(
                 {
                     "action": action,
-                    "probability": probability,
-                    "cost": cost,
+                    "probability": item["simulator_probability"],
+                    "cost": item["cost"],
                     "expected_net": expected_net,
-                    "gateway_used": sim["gateway_used"],
+                    "gateway_used": item.get("gateway_used"),
                 }
             )
 

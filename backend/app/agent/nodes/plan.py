@@ -1,94 +1,28 @@
 """plan node (PRD §15, §31).
 
 Proposes a candidate set of recovery actions. It first computes, deterministically, the simulator's
-recovery probability and fixed cost for each *allowed* payment action — this menu is the ground
-truth the EV scorer will use. The LLM (or the fallback) then ranks candidates from that menu. The
-model's own numbers are advisory only; the menu and the later EV recomputation are authoritative
-(principle §12/§47).
+recovery probability and fixed cost for each *allowed* action — the menu (see
+:func:`app.agent.menu.allowed_menu`) is the ground truth the EV scorer will use. The LLM (or the
+fallback) then ranks candidates from that menu. The model's own numbers are advisory only; the menu
+and the later EV recomputation are authoritative (principle §12/§47).
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from app.agent.contracts import CandidateAction, RecoveryPlan
-from app.agent.costs import cost_of
 from app.agent.llm import LLMUnavailable, is_llm_available, structured_complete
+from app.agent.menu import allowed_menu
 from app.agent.nodes.common import RunnableConfig, configurable, log_decision, open_session
 from app.agent.prompts.plan import PLAN_SYSTEM, build_plan_user
 from app.audit import recorder
 from app.config import settings
 from app.observability import traceable
-from app.schemas.enums import CaseStatus, InterventionType, CaseType
+from app.schemas.enums import CaseStatus
 from app.services import case_service
-from app.simulation import payment_sim, checkout_sim, invoice_sim
-
-def _allowed_menu(db, case_row, context: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """The allowed actions with their simulator-estimated probability and fixed cost."""
-    menu: List[Dict[str, Any]] = []
-    
-    if case_row.case_type == CaseType.FAILED_PAYMENT.value:
-        allowed = [
-            InterventionType.RETRY_PAYMENT.value,
-            InterventionType.SWITCH_GATEWAY.value,
-            InterventionType.CREATE_PAYMENT_LINK.value,
-        ]
-        payment_id = context.get("payment_id")
-        for action in allowed:
-            if not payment_id:
-                continue
-            sim = payment_sim.simulate_payment(db, payment_id, action)
-            menu.append(
-                {
-                    "action": action,
-                    "simulator_probability": sim["probability"],
-                    "cost": cost_of(action),
-                }
-            )
-            
-    elif case_row.case_type == CaseType.ABANDONED_CHECKOUT.value:
-        allowed = [
-            InterventionType.SEND_DISCOUNT_MESSAGE.value,
-            InterventionType.SEND_REMINDER.value,
-        ]
-        checkout_id = context.get("checkout_id")
-        for action in allowed:
-            prob = 0.0
-            if checkout_id:
-                try:
-                    sim = checkout_sim.simulate_checkout_action(db, checkout_id, action)
-                    prob = sim["probability"]
-                except Exception:
-                    pass
-            menu.append({
-                "action": action,
-                "simulator_probability": prob,
-                "cost": cost_of(action),
-            })
-            
-    elif case_row.case_type == CaseType.OVERDUE_INVOICE.value:
-        allowed = [
-            InterventionType.SEND_REMINDER.value,
-            InterventionType.VERIFY_PROMISE.value,
-        ]
-        invoice_id = context.get("invoice_id")
-        for action in allowed:
-            prob = 0.0
-            if invoice_id:
-                try:
-                    sim = invoice_sim.simulate_invoice_action(db, invoice_id, action)
-                    prob = sim["probability"]
-                except Exception:
-                    pass
-            menu.append({
-                "action": action,
-                "simulator_probability": prob,
-                "cost": cost_of(action),
-            })
-            
-    return menu
 
 
-def _fallback_plan(menu: List[Dict[str, Any]]) -> RecoveryPlan:
+def _fallback_plan(menu: list) -> RecoveryPlan:
     """Seed candidates directly from the simulator menu, best-probability first."""
     ordered = sorted(menu, key=lambda m: m["simulator_probability"], reverse=True)
     return RecoveryPlan(
@@ -97,7 +31,7 @@ def _fallback_plan(menu: List[Dict[str, Any]]) -> RecoveryPlan:
                 action=m["action"],
                 expected_recovery_probability=m["simulator_probability"],
                 estimated_cost=m["cost"],
-                rationale="seeded from payment simulator",
+                rationale="seeded from simulator menu",
             )
             for m in ordered
         ],
@@ -110,14 +44,13 @@ def plan(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
     case_id = state["case_id"]
     context = state.get("context", {})
     diagnosis = state.get("diagnosis", {})
-    payment_id = context.get("payment_id")
 
     client = configurable(config, "llm_client")
     model = configurable(config, "plan_model", settings.diagnosis_llm_model)
 
     with open_session(config) as db:
         case_row = case_service.get_case_row(db, case_id)
-        menu = _allowed_menu(db, case_row, context)
+        menu = allowed_menu(db, case_row, context) if case_row else []
 
         source = "llm"
         try:

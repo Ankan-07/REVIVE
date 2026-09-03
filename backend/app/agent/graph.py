@@ -7,7 +7,7 @@ Wires the nodes into the state machine:
 
 Conditional edges:
 * score_ev   : an action was chosen → policy_check; nothing eligible left → update_ledger (terminal).
-* policy_check: APPROVED → execute_tool; REJECTED → score_ev (next best); ESCALATE → update_ledger.
+* policy_check: APPROVED → execute_tool; REJECTED → score_ev (next best); ESCALATE → escalation_pause.
 * router     : recovered → update_ledger; budget left → score_ev; exhausted → update_ledger.
 
 Termination is guaranteed two ways: ``rejected_actions`` shrinks the candidate pool every loop, and
@@ -15,7 +15,7 @@ the router's iteration counter is a hard cap (PRD §21).
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from langgraph.graph import END, START, StateGraph
 
