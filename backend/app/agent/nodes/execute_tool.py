@@ -24,7 +24,6 @@ def execute_tool(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any
     # LangSmith run_id) in the full-stack API test, so we prefer the config thread_id.
     configurable = (config or {}).get("configurable", {})
     case_id = configurable.get("thread_id") or state["case_id"]
-    import sys; print(f"EXEC thread_id={configurable.get('thread_id')!r} state_case_id={state.get('case_id')!r} → using case_id={case_id!r}", file=sys.stderr)
     action = state.get("chosen_action")
 
     with open_session(config) as db:

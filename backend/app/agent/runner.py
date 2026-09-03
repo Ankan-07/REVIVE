@@ -22,7 +22,7 @@ from app.agent.graph import build_graph
 from app.agent.state import initial_state
 from app.config import settings
 from app.db import SessionLocal
-from app.observability import configure_tracing, traceable
+from app.observability import configure_tracing
 
 # Ample headroom over the worst-case node count; real termination is enforced by the router/policy.
 _RECURSION_LIMIT = 60
@@ -48,7 +48,6 @@ def run_agent(
     llm_client: Any = None,
 ) -> Dict[str, Any]:
     """Run the recovery graph for ``case_id`` and return the final graph state."""
-    import sys; print(f"RUN_AGENT entry case_id={case_id!r}", file=sys.stderr)
     configure_tracing()
 
     if checkpointer is None:
@@ -78,7 +77,6 @@ def resume_agent(
     llm_client: Any = None,
 ) -> Dict[str, Any]:
     """Resume an escalated/paused recovery graph execution for ``case_id``."""
-    import sys; print(f"RESUME_AGENT entry case_id={case_id!r} resolution={resolution!r} caller={caller!r}", file=sys.stderr)
     configure_tracing()
 
     if checkpointer is None:

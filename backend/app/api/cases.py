@@ -66,7 +66,6 @@ def run_agent_endpoint(
     if not exists:
         raise HTTPException(status_code=404, detail=f"Case {case_id} not found")
 
-    import sys; print(f"ENDPOINT case_id={case_id!r}", file=sys.stderr)
     run_agent(case_id, session_factory=factory, checkpointer=checkpointer)
 
     db = factory()

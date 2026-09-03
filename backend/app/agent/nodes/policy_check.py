@@ -17,7 +17,8 @@ from app.audit import recorder
 from app.models.audit import AuditEvent
 from app.observability import traceable
 from app.policies import engine as policy_engine
-from app.schemas.enums import CaseStatus, InterventionType
+from app.policies.engine import MESSAGING_ACTIONS
+from app.schemas.enums import CaseStatus
 from app.services import case_service
 
 
@@ -39,7 +40,6 @@ def policy_check(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any
         if case and case.created_at:
             hours_since_creation = (now - case.created_at).total_seconds() / 3600.0
 
-        messaging_actions = {InterventionType.SEND_DISCOUNT_MESSAGE.value, InterventionType.SEND_REMINDER.value}
         events = db.query(AuditEvent).filter(
             AuditEvent.case_id == case_id,
             AuditEvent.event_type == "TOOL_EXECUTED"
@@ -50,7 +50,7 @@ def policy_check(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any
         for event in events:
             payload = event.payload_json or {}
             event_action = payload.get("action")
-            if event_action in messaging_actions:
+            if event_action in MESSAGING_ACTIONS:
                 message_count += 1
                 if last_message_time is None:
                     last_message_time = event.created_at
