@@ -17,6 +17,13 @@ venv/
 *.db
 *.sqlite
 *.sqlite3
+*.db.bak
+*.db.*.bak
+*.sqlite-shm
+*.sqlite-wal
+*.db-shm
+*.db-wal
+*.bak
 
 # --- LangSmith trace exports ---
 traces/
@@ -39,6 +46,8 @@ Thumbs.db
 technical_overview.md
 BUILDPLAN.md
 prd.md
+hld.md
+lld.md
 unzip.cmd
 .agent/
 .agents/
