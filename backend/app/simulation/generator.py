@@ -14,6 +14,7 @@ import random
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -57,17 +58,27 @@ def run_simulation(
 
     rng = random.Random(seed)  # isolated stream -- no global state leakage across tests/requests
 
-    # Deterministic sequential IDs matching the canonical PREFIX-00001 format.
-    counters: Dict[str, int] = {}
+    def make_sequence(model, prefix: str):
+        """DB-aware sequential id factory (canonical PREFIX-00001 format).
 
-    def sid(prefix: str) -> str:
-        counters[prefix] = counters.get(prefix, 0) + 1
-        return f"{prefix}-{counters[prefix]:05d}"
+        The starting number derives from rows already committed for the model, so the seeder can
+        be re-run against a non-empty DB without colliding primary keys. On a fresh DB the
+        sequence starts at 1 exactly as before, keeping seeded output byte-identical.
+        """
+        start = db.query(func.count(model.id)).scalar() or 0
+        state = {"n": start}
+
+        def next_id() -> str:
+            state["n"] += 1
+            return f"{prefix}-{state['n']:05d}"
+
+        return next_id
 
     # --- Gateway health: pick one gateway to be degraded (drives the switch_gateway demo) ---
     degraded_gateway = rng.choice(GATEWAYS)
     gateway_rates: Dict[str, float] = {}
     gateway_snapshot: List[Dict[str, Any]] = []
+    gw_id = make_sequence(GatewayMetric, "GWM")
     for name in GATEWAYS:
         if name == degraded_gateway:
             success_rate = round(rng.uniform(0.65, 0.75), 4)
@@ -90,7 +101,7 @@ def run_simulation(
         )
         db.add(
             GatewayMetric(
-                id=sid("GWM"),
+                id=gw_id(),
                 gateway_name=name,
                 success_rate=success_rate,
                 baseline_success_rate=baseline,
@@ -103,11 +114,12 @@ def run_simulation(
 
     # --- Customers ---
     customers: List[Customer] = []
+    cus_id = make_sequence(Customer, "CUS")
     for i in range(customer_count):
         segment = rng.choice(SEGMENTS)
         intent = clamp01(rng.uniform(0.40, 0.95) + SEGMENT_INTENT_BONUS[segment])
         cust = Customer(
-            id=sid("CUS"),
+            id=cus_id(),
             name=f"Sim Customer {i}",
             email=f"sim_{i}@example.com",
             phone=f"+919876543{i:03d}",
@@ -123,9 +135,10 @@ def run_simulation(
 
     # --- Orders (linked to customers) ---
     orders_by_customer: Dict[str, List[str]] = {c.id: [] for c in customers}
+    ord_id = make_sequence(Order, "ORD")
     for _ in range(order_count):
         cust = rng.choice(customers)
-        order_id = sid("ORD")
+        order_id = ord_id()
         db.add(
             Order(
                 id=order_id,
@@ -145,6 +158,7 @@ def run_simulation(
     # --- Payments (calibrated failure mix + §28 signals) ---
     customer_intent: Dict[str, float] = {c.id: c.intent_score for c in customers}
     payments: List[Payment] = []
+    pay_id = make_sequence(Payment, "PAY")
     for _ in range(payment_count):
         cust = rng.choice(customers)
 
@@ -173,7 +187,7 @@ def run_simulation(
         error_message = None if error_code is None else f"Payment failed due to {error_code}"
 
         payment = Payment(
-            id=sid("PAY"),
+            id=pay_id(),
             customer_id=cust.id,
             order_id=order_id,
             amount=round(rng.uniform(50.0, 2000.0), 2),
@@ -193,11 +207,12 @@ def run_simulation(
 
     # --- Checkouts ---
     checkouts: List[Checkout] = []
+    chk_id = make_sequence(Checkout, "CHK")
     for _ in range(checkout_count):
         cust = rng.choice(customers)
         status = rng.choices(["ABANDONED", "COMPLETED"], weights=[0.8, 0.2])[0]
         checkout = Checkout(
-            id=sid("CHK"),
+            id=chk_id(),
             customer_id=cust.id,
             cart_value=round(rng.uniform(100.0, 5000.0), 2),
             items_json={"item_count": rng.randint(1, 4)},
@@ -211,16 +226,23 @@ def run_simulation(
 
     # --- Invoices ---
     invoices: List[Invoice] = []
+    inv_id = make_sequence(Invoice, "INV")
+    pdf_num = {"n": 0}
+
+    def pdf_url_for() -> str:
+        pdf_num["n"] += 1
+        return f"https://example.com/invoices/INV_PDF-{pdf_num['n']:05d}.pdf"
+
     for _ in range(invoice_count):
         cust = rng.choice(customers)
         status = rng.choices(["OVERDUE", "PAID"], weights=[0.8, 0.2])[0]
         invoice = Invoice(
-            id=sid("INV"),
+            id=inv_id(),
             customer_id=cust.id,
             amount=round(rng.uniform(500.0, 20000.0), 2),
             due_date=SIM_EPOCH + timedelta(days=rng.randint(0, 120)),
             status=status,
-            pdf_url=f"https://example.com/invoices/{sid('INV_PDF')}.pdf",
+            pdf_url=pdf_url_for(),
             created_at=SIM_EPOCH + timedelta(days=rng.randint(0, 90)),
         )
         invoices.append(invoice)
@@ -271,8 +293,9 @@ def run_simulation(
         "baseline": evaluate_baseline_strategy(db, failed),
     }
 
+    sim_id = make_sequence(SimulationRun, "SIM")
     sim_run = SimulationRun(
-        id=sid("SIM"),
+        id=sim_id(),
         seed=seed,
         name=f"Run_seed_{seed}",
         config_json={
