@@ -1,4 +1,4 @@
-import { API_BASE_URL } from './client';
+import { apiFetch } from './client';
 
 export interface RevenueRiskCaseRead {
   id: string;
@@ -10,18 +10,11 @@ export interface RevenueRiskCaseRead {
   status: string;
   net_recovered_amount: number;
   diagnosis_json?: any;
+  details?: any;
   current_action?: string;
   attempt_count: number;
   created_at: string;
   updated_at: string;
-}
-
-export async function getCase(caseId: string): Promise<RevenueRiskCaseRead> {
-  const res = await fetch(`${API_BASE_URL}/cases/${caseId}`);
-  if (!res.ok) {
-    throw new Error(`Failed to fetch case: ${res.status}`);
-  }
-  return res.json();
 }
 
 export interface TimelineEntry {
@@ -43,20 +36,18 @@ export interface RunAgentResponse {
   timeline: TimelineEntry[];
 }
 
-export async function listCases(skip: number = 0, limit: number = 100): Promise<RevenueRiskCaseRead[]> {
-  const res = await fetch(`${API_BASE_URL}/cases?skip=${skip}&limit=${limit}`);
-  if (!res.ok) throw new Error(`Failed to list cases: ${res.status}`);
-  return res.json();
+export function getCase(caseId: string): Promise<RevenueRiskCaseRead> {
+  return apiFetch(`/cases/${caseId}`, undefined, 'Failed to fetch case');
 }
 
-export async function getCaseAudit(caseId: string): Promise<TimelineEntry[]> {
-  const res = await fetch(`${API_BASE_URL}/cases/${caseId}/audit`);
-  if (!res.ok) throw new Error(`Failed to fetch case audit: ${res.status}`);
-  return res.json();
+export function listCases(skip: number = 0, limit: number = 100): Promise<RevenueRiskCaseRead[]> {
+  return apiFetch(`/cases?skip=${skip}&limit=${limit}`, undefined, 'Failed to list cases');
 }
 
-export async function runAgent(caseId: string): Promise<RunAgentResponse> {
-  const res = await fetch(`${API_BASE_URL}/cases/${caseId}/run-agent`, { method: 'POST' });
-  if (!res.ok) throw new Error(`Failed to run agent: ${res.status}`);
-  return res.json();
+export function getCaseAudit(caseId: string): Promise<TimelineEntry[]> {
+  return apiFetch(`/cases/${caseId}/audit`, undefined, 'Failed to fetch case audit');
+}
+
+export function runAgent(caseId: string): Promise<RunAgentResponse> {
+  return apiFetch(`/cases/${caseId}/run-agent`, { method: 'POST' }, 'Failed to run agent');
 }
