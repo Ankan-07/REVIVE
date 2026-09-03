@@ -24,6 +24,7 @@ from app.models.metric import GatewayMetric
 from app.models.simulation import SimulationRun
 from app.schemas.enums import PaymentStatus, InterventionType
 from app.simulation.payment_sim import recovery_probability, gateway_health_for, clamp01
+from app.simulation.baseline import evaluate_baseline_strategy
 
 # Fixed reference point so generated timestamps are deterministic (never wall-clock).
 SIM_EPOCH = datetime(2026, 1, 1)
@@ -225,6 +226,7 @@ def run_simulation(
         "gateways": gateway_snapshot,
         "amount_at_risk": round(amount_at_risk, 2),
         "ground_truth": gt,
+        "baseline": evaluate_baseline_strategy(db, failed),
     }
 
     sim_run = SimulationRun(
