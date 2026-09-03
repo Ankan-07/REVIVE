@@ -23,6 +23,7 @@ class RevenueRiskCaseRead(RevenueRiskCaseBase):
     status: CaseStatus
     net_recovered_amount: float = 0.0
     diagnosis_json: Optional[Dict[str, Any]] = None
+    details: Optional[Dict[str, Any]] = None
     current_action: Optional[str] = None
     attempt_count: int = 0
     created_at: datetime
