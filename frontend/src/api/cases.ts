@@ -2,6 +2,7 @@ import { apiFetch } from './client';
 
 export interface RevenueRiskCaseRead {
   id: string;
+  payment_id?: string | null;
   customer_id: string;
   case_type: string;
   amount_at_risk: number;

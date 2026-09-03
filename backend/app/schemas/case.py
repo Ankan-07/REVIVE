@@ -20,6 +20,7 @@ class RevenueRiskCaseRead(RevenueRiskCaseBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
+    payment_id: Optional[str] = None
     status: CaseStatus
     net_recovered_amount: float = 0.0
     diagnosis_json: Optional[Dict[str, Any]] = None
