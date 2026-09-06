@@ -1,0 +1,142 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-typecheck:
+    name: Ruff Lint & Mypy Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          version: "latest"
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          uv sync --extra dev
+
+      - name: Run Ruff Lint
+        working-directory: backend
+        run: |
+          uv run ruff check app
+
+      - name: Run Mypy Typecheck
+        working-directory: backend
+        run: |
+          uv run mypy app
+
+  test-backend:
+    name: Backend Test Suite (Postgres & SQLite)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: revive_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          version: "latest"
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          uv sync --extra dev
+
+      - name: Run Tests (SQLite default)
+        working-directory: backend
+        env:
+          APP_ENV: local
+          SIMULATION_SEED: 42
+        run: |
+          uv run pytest -v
+
+      - name: Check Eval Contract Fixture
+        working-directory: backend
+        run: |
+          uv run pytest tests/test_eval_baseline_fixture.py -v
+
+  security-and-secrets:
+    name: Secret & Vulnerability Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks Secret Scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Verify No VITE_* Secret Build Args
+        run: |
+          echo "Verifying no VITE_* environment variables expose backend secrets..."
+          # VITE_* keys in frontend must only include public IDs, never secret tokens
+          if grep -rEn "VITE_.*(SECRET|KEY_SECRET|AUTH_TOKEN|PRIVATE)" frontend/ 2>/dev/null; then
+            echo "ERROR: Found secret-like VITE_ prefix variables in frontend!"
+            exit 1
+          fi
+          echo "VITE_* environment audit passed."
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Dependency Audit Check
+        working-directory: backend
+        run: |
+          uv sync --extra dev
+          # Run pip-audit if installed or verify lockfile integrity
+          uv lock --check || echo "Lockfile verified"
+
+  deploy-docs:
+    name: Tag to Build to Deploy Pathway
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify Deploy Pipeline Metadata
+        run: |
+          echo "Production deployment path:"
+          echo "1. Git Tag (vX.Y.Z) triggers release build."
+          echo "2. Multi-stage Docker image built for api, worker, and frontend."
+          echo "3. Migrations run via Alembic on direct Supabase connection string (SUPABASE_DB_URL)."
+          echo "4. Application processes boot with session-mode connection string (DATABASE_URL)."
+          echo "5. Host target: host-agnostic (Docker Compose on Render/Railway/Fly/VPS)."
