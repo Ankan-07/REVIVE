@@ -59,3 +59,13 @@ unzip.cmd
 .kiro/
 .opencode/
 .trae/
+
+# --- IDE rules & security audit ---
+.clinerules
+.cursorrules
+.windsurfrules
+AGENTS.md
+GEMINI.md
+.github/copilot-instructions.md
+web-security-audit-portable/
+docs/
