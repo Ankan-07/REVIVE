@@ -127,15 +127,17 @@ def _signature_is_valid(order_id: str, razorpay_payment_id: str, signature: str)
     return hmac.compare_digest(expected, signature)
 
 
-def _open_case_for_payment(db: Session, payment_id: str) -> Optional[RevenueRiskCase]:
+def _open_case_for_payment(db: Session, payment_id: str, for_update: bool = False) -> Optional[RevenueRiskCase]:
     """The case working this payment that is not already closed/recovered."""
-    return (
+    query = (
         db.query(RevenueRiskCase)
         .filter(RevenueRiskCase.payment_id == payment_id)
         .filter(RevenueRiskCase.status.notin_(_CLOSED_STATUSES))
         .order_by(RevenueRiskCase.created_at.asc())
-        .first()
     )
+    if for_update:
+        query = query.with_for_update()
+    return query.first()
 
 
 # --------------------------------------------------------------------------------------
@@ -184,6 +186,18 @@ def create_order_for_payment(db: Session, *, payment_id: str) -> dict:
         raise GatewayError(str(exc))
 
     order_id = order.get("id", "")
+    if order_id:
+        from app.services import provider_object_service
+
+        provider_object_service.record_object(
+            db,
+            case_id=case.id if case else None,
+            object_type="order",
+            provider_object_id=order_id,
+            amount_paise=amount_paise,
+            status="created",
+        )
+
     recorder.record(
         db,
         case.id if case else None,
@@ -222,7 +236,7 @@ def verify_and_settle(
     if not is_configured():
         raise NotConfiguredError()
 
-    payment = db.query(Payment).filter(Payment.id == payment_id).first()
+    payment = db.query(Payment).filter(Payment.id == payment_id).with_for_update().first()
     if payment is None:
         raise PaymentNotFoundError(payment_id)
 
@@ -258,7 +272,7 @@ def verify_and_settle(
     payment.error_code = None
     payment.error_message = None
 
-    case = _open_case_for_payment(db, payment_id)
+    case = _open_case_for_payment(db, payment_id, for_update=True)
     net_recovered = 0.0
 
     if case is not None:
@@ -308,6 +322,22 @@ def verify_and_settle(
                 "verified_via": "razorpay_checkout_signature",
             },
             actor="SYSTEM",
+        )
+
+    # ---- 4. Record provider objects for instant reconciliation (A1.7) ----------------
+    from app.services import provider_object_service
+
+    amount_paise = int(round(float(payment.amount) * 100))
+    if order_id:
+        provider_object_service.update_status(db, provider_object_id=order_id, status="paid")
+    if razorpay_payment_id:
+        provider_object_service.record_object(
+            db,
+            case_id=case.id if case else None,
+            object_type="payment",
+            provider_object_id=razorpay_payment_id,
+            amount_paise=amount_paise,
+            status="captured",
         )
 
     return {

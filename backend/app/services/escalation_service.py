@@ -10,8 +10,11 @@ def get_pending_escalations(db: Session) -> List[Escalation]:
     """Return all escalations currently waiting for human action."""
     return db.query(Escalation).filter(Escalation.status == "OPEN").order_by(Escalation.created_at.desc()).all()
 
-def get_escalation(db: Session, escalation_id: str) -> Optional[Escalation]:
-    return db.query(Escalation).filter(Escalation.id == escalation_id).first()
+def get_escalation(db: Session, escalation_id: str, for_update: bool = False) -> Optional[Escalation]:
+    query = db.query(Escalation).filter(Escalation.id == escalation_id)
+    if for_update:
+        query = query.with_for_update()
+    return query.first()
 
 def get_open_for_case(db: Session, case_id: str) -> Optional[Escalation]:
     return db.query(Escalation).filter(Escalation.case_id == case_id, Escalation.status == "OPEN").first()
@@ -47,7 +50,7 @@ def create_escalation(
 
 def assign_escalation(db: Session, escalation_id: str, owner_id: str) -> Optional[Escalation]:
     """Assign an open escalation to an operator."""
-    esc = get_escalation(db, escalation_id)
+    esc = get_escalation(db, escalation_id, for_update=True)
     if esc and esc.status == "OPEN":
         esc.owner_id = owner_id
         db.commit()
