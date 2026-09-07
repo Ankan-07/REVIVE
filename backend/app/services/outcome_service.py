@@ -7,7 +7,7 @@ report expected/realized NET, never gross).
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
@@ -37,7 +37,7 @@ def record_outcome(
         net_recovered=net,
         cost_total=cost_total,
         discount_total=discount_total,
-        verified_at=datetime.utcnow() if verified else None,
+        verified_at=datetime.now(timezone.utc) if verified else None,
     )
     db.add(outcome)
     db.commit()
