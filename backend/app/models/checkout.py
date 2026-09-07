@@ -1,6 +1,5 @@
-from datetime import datetime
 from sqlalchemy import Column, String, Float, ForeignKey, DateTime, JSON
-from app.db import Base
+from app.db import Base, utc_now
 
 
 class Checkout(Base):
@@ -10,6 +9,6 @@ class Checkout(Base):
     customer_id = Column(String, ForeignKey("customers.id"), nullable=False, index=True)
     cart_value = Column(Float, nullable=False)
     items_json = Column(JSON, nullable=True)
-    abandoned_at = Column(DateTime, default=datetime.utcnow)
+    abandoned_at = Column(DateTime, default=utc_now)
     status = Column(String, nullable=False, default="ABANDONED")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)

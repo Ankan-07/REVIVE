@@ -1,6 +1,5 @@
-from datetime import datetime
 from sqlalchemy import Column, String, ForeignKey, DateTime, JSON
-from app.db import Base
+from app.db import Base, utc_now
 
 
 class AuditEvent(Base):
@@ -11,4 +10,4 @@ class AuditEvent(Base):
     event_type = Column(String, nullable=False, index=True)
     actor = Column(String, nullable=False, default="AGENT")  # AGENT, SYSTEM, HUMAN
     payload_json = Column(JSON, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)

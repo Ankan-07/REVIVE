@@ -1,6 +1,5 @@
-from datetime import datetime
 from sqlalchemy import Column, String, ForeignKey, DateTime, JSON, Text
-from app.db import Base
+from app.db import Base, utc_now
 
 
 class AgentDecision(Base):
@@ -12,4 +11,4 @@ class AgentDecision(Base):
     input_state_json = Column(JSON, nullable=True)
     output_decision_json = Column(JSON, nullable=True)
     reasoning = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)

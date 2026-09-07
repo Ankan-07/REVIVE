@@ -1,6 +1,5 @@
-from datetime import datetime
 from sqlalchemy import Column, String, Float, ForeignKey, DateTime
-from app.db import Base
+from app.db import Base, utc_now
 
 
 class Invoice(Base):
@@ -12,4 +11,4 @@ class Invoice(Base):
     due_date = Column(DateTime, nullable=False)
     status = Column(String, nullable=False, default="OVERDUE")
     pdf_url = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)

@@ -1,6 +1,5 @@
-from datetime import datetime
 from sqlalchemy import Column, String, ForeignKey, DateTime, Text
-from app.db import Base
+from app.db import Base, utc_now
 
 
 class Escalation(Base):
@@ -14,5 +13,5 @@ class Escalation(Base):
     recommended_action = Column(String, nullable=True)
     notes = Column(Text, nullable=True)
     status = Column(String, nullable=False, default="OPEN")  # OPEN, RESOLVED, REJECTED
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
     resolved_at = Column(DateTime, nullable=True)

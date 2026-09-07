@@ -1,6 +1,5 @@
-from datetime import datetime
 from sqlalchemy import Column, String, ForeignKey, DateTime, Text
-from app.db import Base
+from app.db import Base, utc_now
 
 
 class Communication(Base):
@@ -14,4 +13,4 @@ class Communication(Base):
     template_id = Column(String, nullable=True)
     content = Column(Text, nullable=False)
     status = Column(String, nullable=False, default="SENT")
-    sent_at = Column(DateTime, default=datetime.utcnow)
+    sent_at = Column(DateTime, default=utc_now)
