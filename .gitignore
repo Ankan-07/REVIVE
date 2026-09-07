@@ -33,6 +33,8 @@ node_modules/
 dist/
 .vite/
 *.tsbuildinfo
+backend/package.json
+backend/package-lock.json
 
 # --- Dev scratch ---
 scratch_*.py
