@@ -1,6 +1,5 @@
-from datetime import datetime
 from sqlalchemy import Column, String, Integer, ForeignKey, DateTime
-from app.db import Base
+from app.db import Base, utc_now
 
 
 class ProviderObject(Base):
@@ -18,5 +17,5 @@ class ProviderObject(Base):
     amount_paise = Column(Integer, nullable=True)
     status = Column(String, nullable=True)
     fee_paise = Column(Integer, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
