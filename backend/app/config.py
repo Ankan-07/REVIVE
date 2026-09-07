@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     langsmith_project: str = "revenue-rescue-engine"
     langsmith_tracing: bool = True
     database_url: str = "sqlite:///./revive.db"
+    # Direct Supabase PostgreSQL URL (port 5432) for Alembic migrations and LangGraph checkpointer
+    supabase_db_url: str = ""
     # LangGraph checkpointer lives in its own SQLite file, separate from the domain DB, so agent
     # run state never collides with business data (BUILDPLAN Phase 4).
     checkpoint_db_path: str = "./revive_checkpoints.sqlite"
