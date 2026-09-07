@@ -14,6 +14,8 @@ from app.models.audit import AuditEvent
 from app.models.metric import GatewayMetric
 from app.models.outcome import RecoveryOutcome
 from app.models.simulation import SimulationRun
+from app.models.provider_event import ProviderEvent
+from app.models.provider_object import ProviderObject
 
 __all__ = [
     "Customer",
@@ -32,4 +34,6 @@ __all__ = [
     "GatewayMetric",
     "RecoveryOutcome",
     "SimulationRun",
+    "ProviderEvent",
+    "ProviderObject",
 ]
