@@ -19,23 +19,34 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        'escalations',
-        sa.Column('id', sa.String(), nullable=False),
-        sa.Column('case_id', sa.String(), nullable=False),
-        sa.Column('reason', sa.String(), nullable=False),
-        sa.Column('priority', sa.String(), nullable=True),
-        sa.Column('owner_id', sa.String(), nullable=True),
-        sa.Column('recommended_action', sa.String(), nullable=True),
-        sa.Column('notes', sa.Text(), nullable=True),
-        sa.Column('status', sa.String(), nullable=False),
-        sa.Column('created_at', sa.DateTime(), nullable=True),
-        sa.Column('resolved_at', sa.DateTime(), nullable=True),
-        sa.ForeignKeyConstraint(['case_id'], ['revenue_risk_cases.id'], ),
-        sa.PrimaryKeyConstraint('id')
-    )
-    op.create_index(op.f('ix_escalations_case_id'), 'escalations', ['case_id'], unique=False)
-    op.create_index(op.f('ix_escalations_id'), 'escalations', ['id'], unique=False)
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    tables = inspector.get_table_names()
+    if 'escalations' not in tables:
+        op.create_table(
+            'escalations',
+            sa.Column('id', sa.String(), nullable=False),
+            sa.Column('case_id', sa.String(), nullable=False),
+            sa.Column('reason', sa.String(), nullable=False),
+            sa.Column('priority', sa.String(), nullable=True),
+            sa.Column('owner_id', sa.String(), nullable=True),
+            sa.Column('recommended_action', sa.String(), nullable=True),
+            sa.Column('notes', sa.Text(), nullable=True),
+            sa.Column('status', sa.String(), nullable=False),
+            sa.Column('created_at', sa.DateTime(), nullable=True),
+            sa.Column('resolved_at', sa.DateTime(), nullable=True),
+            sa.ForeignKeyConstraint(['case_id'], ['revenue_risk_cases.id'], ),
+            sa.PrimaryKeyConstraint('id')
+        )
+        op.create_index(op.f('ix_escalations_case_id'), 'escalations', ['case_id'], unique=False)
+        op.create_index(op.f('ix_escalations_id'), 'escalations', ['id'], unique=False)
+    else:
+        columns = [c['name'] for c in inspector.get_columns('escalations')]
+        with op.batch_alter_table('escalations') as batch_op:
+            if 'owner_id' not in columns:
+                batch_op.add_column(sa.Column('owner_id', sa.String(), nullable=True))
+            if 'recommended_action' not in columns:
+                batch_op.add_column(sa.Column('recommended_action', sa.String(), nullable=True))
 
 
 def downgrade() -> None:
