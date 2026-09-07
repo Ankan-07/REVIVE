@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
@@ -72,7 +72,7 @@ def resolve_escalation(
             existing_notes = esc.notes or ""
             sep = "\n\n" if existing_notes else ""
             esc.notes = f"{existing_notes}{sep}Resolution: {notes}"
-        esc.resolved_at = datetime.utcnow()
+        esc.resolved_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(esc)
         transitioned = True

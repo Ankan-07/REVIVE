@@ -9,7 +9,7 @@ conditional edge (see :func:`app.agent.graph.route_after_policy`):
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 from app.agent.nodes.common import RunnableConfig, log_decision, open_session
@@ -35,10 +35,11 @@ def policy_check(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any
         case = case_service.get_case_row(db, case_id)
         attempt_count = (case.attempt_count or 0) if case else 0
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         hours_since_creation = 0.0
         if case and case.created_at:
-            hours_since_creation = (now - case.created_at).total_seconds() / 3600.0
+            c_at = case.created_at if case.created_at.tzinfo is not None else case.created_at.replace(tzinfo=timezone.utc)
+            hours_since_creation = (now - c_at).total_seconds() / 3600.0
 
         events = db.query(AuditEvent).filter(
             AuditEvent.case_id == case_id,
@@ -57,7 +58,8 @@ def policy_check(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any
         
         hours_since_last_message = None
         if last_message_time:
-            hours_since_last_message = (now - last_message_time).total_seconds() / 3600.0
+            l_time = last_message_time if last_message_time.tzinfo is not None else last_message_time.replace(tzinfo=timezone.utc)
+            hours_since_last_message = (now - l_time).total_seconds() / 3600.0
 
         decision = policy_engine.evaluate(
             action,
