@@ -29,9 +29,32 @@ _RECURSION_LIMIT = 60
 
 
 def _default_checkpointer():
-    """A durable SQLite checkpointer at the configured path (created/migrated on first use)."""
-    import sqlite3
+    """Durable checkpointer: PostgresSaver when Postgres is configured (A1.6), otherwise SqliteSaver."""
+    direct_pg_url = settings.supabase_db_url or (
+        settings.database_url if settings.database_url.startswith("postgresql") else None
+    )
 
+    if direct_pg_url:
+        try:
+            import psycopg
+            from langgraph.checkpoint.postgres import PostgresSaver
+
+            conn_str = direct_pg_url
+            if conn_str.startswith("postgresql+psycopg://"):
+                conn_str = "postgresql://" + conn_str[len("postgresql+psycopg://"):]
+            
+            conn = psycopg.connect(conn_str, autocommit=True)
+            saver = PostgresSaver(conn)
+            saver.setup()
+            return saver
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Failed to initialize PostgresSaver (%s); falling back to local SQLite checkpointer.", exc
+            )
+
+    # Local fallback for hermetic tests or local dev without Postgres
+    import sqlite3
     from langgraph.checkpoint.sqlite import SqliteSaver
 
     conn = sqlite3.connect(settings.checkpoint_db_path, check_same_thread=False)
