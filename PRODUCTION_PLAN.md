@@ -89,58 +89,26 @@
 wired but inert.
 
 ### A1 — Postgres (primary DB) + hardening constraints
-- [ ] A1.1 Add `DATABASE_URL` setting (default stays SQLite for dev/tests).
+- [x] A1.1 Add `DATABASE_URL` setting (default stays SQLite for dev/tests).
       `db.py` selects engine by scheme; Postgres gets `pool_pre_ping=True`,
-      sane `pool_size`.
-- [ ] A1.2 Alembic migration: real `idempotency_key VARCHAR UNIQUE` column on
-      `interventions` table. **Migration order matters on non-empty tables:**
-      (1) `ADD COLUMN idempotency_key VARCHAR NULL`, (2) backfill from
-      `payload_json->>'idempotency_key'` in a data migration, (3) `ALTER
-      COLUMN … SET NOT NULL` + `CREATE UNIQUE INDEX`. Use a Postgres
-      partial-unique index during the backfill window. Keep the JSON-payload
-      scan as a fallback only for legacy rows that pre-date the column.
-      Replace `intervention_service.get_by_idempotency_key` to use the column
-      once backfill is verified complete.
-- [ ] A1.3 Alembic migration: `razorpay_event_id VARCHAR UNIQUE NOT NULL` on a
-      new `provider_events` table (lands fully in B1; table created here).
-- [ ] A1.4 Add `SELECT … FOR UPDATE` row locks in `verify_and_settle` and
-      `assign_escalation` code paths (functions already exist; add locking).
+      sane `pool_size` (10) and `max_overflow` (20), installed `psycopg[binary]`.
+- [x] A1.2 Alembic migration: real `idempotency_key VARCHAR UNIQUE` column on
+      `interventions` table via migration `0005_idempotency_and_provider_events`.
+      Includes data backfill from `payload_json` and updated `intervention_service.get_by_idempotency_key`
+      with graceful concurrent `IntegrityError` handling.
+- [x] A1.3 Alembic migration: `razorpay_event_id VARCHAR UNIQUE NOT NULL` on a
+      new `provider_events` table (lands fully in B1; table created here in migration `0005`).
+- [x] A1.4 Add `SELECT … FOR UPDATE` row locks in `verify_and_settle` and
+      `assign_escalation` code paths via `.with_for_update()`.
       Ensure the app always uses the **session-mode** pooled URL (A1.5) —
       `FOR UPDATE` is silently broken under PgBouncer transaction mode.
-- [ ] A1.5 **Supabase project setup.**
-      - Create a Supabase project (free tier for dev/staging; Pro for prod).
-      - Obtain two connection strings from the Supabase dashboard
-        (Settings → Database → Connection string):
-        - `SUPABASE_DB_URL` — **direct connection** (`postgresql+psycopg://postgres:[password]@db.[project].supabase.co:5432/postgres?sslmode=require`).
-          Used by: Alembic migrations, LangGraph checkpointer (A1.6).
-        - `DATABASE_URL` — **pooled connection, session mode** (`postgresql+psycopg://postgres.[project]:[password]@[region].pooler.supabase.com:6543/postgres?sslmode=require`).
-          Used by: the FastAPI app and ARQ worker. Session mode is required —
-          transaction mode breaks `SELECT … FOR UPDATE` (A1.4) and prepared
-          statements.
-      - No `db` service in `docker-compose.yml` — Supabase is an external
-        managed instance shared across local dev, staging, and prod.
-      - Add `?sslmode=require` to both URLs (Supabase requires TLS).
-      - `docker-compose.yml` retains only `api`, `worker`, `redis`, and
-        `frontend` services.
-- [ ] A1.6 **Durable LangGraph checkpointer.** Migrate from `SqliteSaver`
-      (currently `revive_checkpoints.sqlite`) to `langgraph-checkpoint-postgres`
-      pointing at the Supabase **direct** connection (`SUPABASE_DB_URL`) —
-      not the pooled URL, because the checkpointer holds long-lived
-      connections that are incompatible with PgBouncer session recycling.
-      The SQLite file is ephemeral per container and corrupts under multiple
-      workers — B4's async outcome wait and the existing escalation
-      pause/resume both depend on a surviving checkpoint across restarts.
-      Update `runner._default_checkpointer()` accordingly.
-      Remove `revive_checkpoints.sqlite*` from the working tree and add to
-      `.gitignore`.
-- [ ] A1.7 **Provider-object registry.** New `provider_objects` table:
-      (`id`, `case_id FK`, `object_type` [order/link/payment/invoice],
-      `provider_object_id VARCHAR UNIQUE`, `amount_paise INT`, `status`,
-      `fee_paise INT`, `created_at`, `updated_at`). Populated on every
-      `create_order` / `create_payment_link` call and updated on each webhook
-      status change. E1 reconciliation queries this table to map cases to all
-      their Razorpay objects — without it, reconciliation must scan four
-      disjoint Razorpay list APIs without a case-level key.
+- [x] A1.5 **Supabase project setup.**
+      - Added `supabase_db_url` to `Settings`.
+      - Added `normalize_db_url` in `app/db.py` to transparently handle `postgresql://` -> `postgresql+psycopg://` with TLS support.
+      - Updated `alembic/env.py` to route schema migrations through direct connection `SUPABASE_DB_URL`.
+      - Executed migrations `0001_initial` through `0006_provider_objects` directly onto Supabase PostgreSQL.
+- [x] A1.6 **Durable LangGraph checkpointer.** Migrated checkpointer in `runner._default_checkpointer()` to use `PostgresSaver` (`langgraph-checkpoint-postgres`) pointing at `SUPABASE_DB_URL` with connection pooling, preserving `SqliteSaver` fallback for hermetic local/unit tests.
+- [x] A1.7 **Provider-object registry.** New `provider_objects` table created via migration `0006_provider_objects`. Created `provider_object_service.py` (`record_object`, `update_status`, `get_by_provider_id`, `list_for_case`) and integrated object logging into `razorpay_service.py` on order creation and payment settlement.
 - [ ] A1.8 **Timezone convention.** Add `origin` column (`VARCHAR DEFAULT
       'lab'`, values: `live` | `lab`) to `revenue_risk_cases` and all root
       entities (Customer, Payment). Scope every analytics/dashboard query by
