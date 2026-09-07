@@ -1,6 +1,5 @@
-from datetime import datetime
 from sqlalchemy import Column, String, Boolean, DateTime, JSON
-from app.db import Base
+from app.db import Base, utc_now
 
 
 class Policy(Base):
@@ -11,4 +10,4 @@ class Policy(Base):
     description = Column(String, nullable=True)
     rules_json = Column(JSON, nullable=False)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)

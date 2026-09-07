@@ -1,6 +1,5 @@
-from datetime import datetime
 from sqlalchemy import Column, String, Float, DateTime
-from app.db import Base
+from app.db import Base, utc_now
 
 
 class GatewayMetric(Base):
@@ -12,4 +11,4 @@ class GatewayMetric(Base):
     baseline_success_rate = Column(Float, nullable=True)  # §13 diagnosis: current vs baseline
     latency_ms = Column(Float, nullable=False)
     health_status = Column(String, nullable=False, default="HEALTHY")  # HEALTHY, DEGRADED, DOWN
-    recorded_at = Column(DateTime, default=datetime.utcnow)
+    recorded_at = Column(DateTime, default=utc_now)

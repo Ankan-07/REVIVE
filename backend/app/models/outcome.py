@@ -1,6 +1,5 @@
-from datetime import datetime
 from sqlalchemy import Column, String, Float, ForeignKey, DateTime
-from app.db import Base
+from app.db import Base, utc_now
 
 
 class RecoveryOutcome(Base):
@@ -14,4 +13,4 @@ class RecoveryOutcome(Base):
     cost_total = Column(Float, default=0.0)
     discount_total = Column(Float, default=0.0)
     verified_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)

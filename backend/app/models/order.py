@@ -1,6 +1,5 @@
-from datetime import datetime
 from sqlalchemy import Column, String, Float, ForeignKey, DateTime, JSON
-from app.db import Base
+from app.db import Base, utc_now
 
 
 class Order(Base):
@@ -12,4 +11,4 @@ class Order(Base):
     currency = Column(String, default="INR")
     status = Column(String, nullable=False)
     items_json = Column(JSON, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
