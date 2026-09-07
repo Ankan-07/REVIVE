@@ -22,6 +22,8 @@ PREFIX_MAP = {
     "GWM": ("app.models.metric", "GatewayMetric"),
     "OUT": ("app.models.outcome", "RecoveryOutcome"),
     "SIM": ("app.models.simulation", "SimulationRun"),
+    "PEV": ("app.models.provider_event", "ProviderEvent"),
+    "POBJ": ("app.models.provider_object", "ProviderObject"),
 }
 
 
