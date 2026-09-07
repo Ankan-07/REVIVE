@@ -7,7 +7,7 @@ are only a handful of interventions per case, so a scan is cheap and fully porta
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from sqlalchemy.exc import IntegrityError
@@ -65,7 +65,7 @@ def create_executed(
         discount_amount=discount_amount,
         status=_EXECUTED,
         payload_json={"idempotency_key": idempotency_key, **result},
-        executed_at=datetime.utcnow(),
+        executed_at=datetime.now(timezone.utc),
     )
     db.add(intervention)
     try:

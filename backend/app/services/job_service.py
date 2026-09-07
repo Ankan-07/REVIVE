@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
@@ -14,7 +14,7 @@ def verify_overdue_promises(db: Session) -> int:
     Marks them BROKEN, escalates the case, and appends a ``PROMISE_BROKEN`` audit event for each.
     Returns the number of promises that were escalated.
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     closed_statuses = [
         CaseStatus.RECOVERED.value,
         CaseStatus.CLOSED_NO_RECOVERY.value,
