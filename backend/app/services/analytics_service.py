@@ -1,5 +1,5 @@
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Optional
 
 from sqlalchemy import distinct, func
@@ -25,14 +25,17 @@ def _apply_case_filters(
     start_date: Optional[datetime],
     end_date: Optional[datetime],
     case_type: Optional[str],
+    origin: Optional[str] = None,
 ) -> Query:
-    """Apply the shared case-level filters (creation window + type) to a query joined to cases."""
+    """Apply the shared case-level filters (creation window, type, and origin) to a query joined to cases."""
     if start_date:
         query = query.filter(RevenueRiskCase.created_at >= start_date)
     if end_date:
         query = query.filter(RevenueRiskCase.created_at <= end_date)
     if case_type:
         query = query.filter(RevenueRiskCase.case_type == case_type)
+    if origin:
+        query = query.filter(RevenueRiskCase.origin == origin)
     return query
 
 
@@ -46,6 +49,7 @@ def _case_level_metrics(
     start_date: Optional[datetime],
     end_date: Optional[datetime],
     case_type: Optional[str],
+    origin: Optional[str] = None,
 ) -> tuple:
     """Case-level aggregates (amount at risk, recovery rate, mean recovery time).
 
@@ -59,6 +63,7 @@ def _case_level_metrics(
         start_date,
         end_date,
         case_type,
+        origin,
     ).all()
 
     latest: Dict[str, tuple] = {}
@@ -76,7 +81,9 @@ def _case_level_metrics(
             recovered_count += 1
             closed_at = outcome.verified_at or outcome.created_at
             if case.created_at and closed_at:
-                recovery_hours.append((closed_at - case.created_at).total_seconds() / 3600.0)
+                c_at = case.created_at if case.created_at.tzinfo is not None else case.created_at.replace(tzinfo=timezone.utc)
+                cl_at = closed_at if closed_at.tzinfo is not None else closed_at.replace(tzinfo=timezone.utc)
+                recovery_hours.append((cl_at - c_at).total_seconds() / 3600.0)
 
     total_cases = len(latest)
     avg_hours = sum(recovery_hours) / len(recovery_hours) if recovery_hours else None
@@ -89,6 +96,7 @@ def get_recovery_totals(
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
     case_type: Optional[str] = None,
+    origin: Optional[str] = None,
 ) -> RecoveryTotalsResponse:
     # Money ledger: sums over outcome rows (kept as-is so the aggregate reconciles with the stored
     # net per outcome; net = gross − cost − discount) joined to their cases for the filters.
@@ -100,11 +108,11 @@ def get_recovery_totals(
         func.sum(RecoveryOutcome.net_recovered).label("total_net_recovered"),
     ).join(RevenueRiskCase, RecoveryOutcome.case_id == RevenueRiskCase.id)
 
-    query = _apply_case_filters(query, start_date, end_date, case_type)
+    query = _apply_case_filters(query, start_date, end_date, case_type, origin)
     result = query.one()
 
     total_cases, amount_at_risk, recovered_count, avg_hours = _case_level_metrics(
-        db, start_date, end_date, case_type
+        db, start_date, end_date, case_type, origin
     )
     recovery_rate = recovered_count / max(total_cases, 1)
 
@@ -126,6 +134,7 @@ def get_intervention_stats(
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
     case_type: Optional[str] = None,
+    origin: Optional[str] = None,
 ) -> InterventionStatsResponse:
     query = db.query(
         Intervention.intervention_type,
@@ -133,7 +142,7 @@ def get_intervention_stats(
         func.sum(Intervention.cost).label("total_cost")
     ).join(RevenueRiskCase, Intervention.case_id == RevenueRiskCase.id)
 
-    query = _apply_case_filters(query, start_date, end_date, case_type)
+    query = _apply_case_filters(query, start_date, end_date, case_type, origin)
     query = query.group_by(Intervention.intervention_type)
 
     results = query.all()
@@ -146,6 +155,7 @@ def get_intervention_stats(
         start_date,
         end_date,
         case_type,
+        origin,
     ).all()
     success_by_type: Counter = Counter()
     for intervention in success_rows:
@@ -192,12 +202,18 @@ def get_baseline_comparison(db: Session, seed: Optional[int] = None) -> Baseline
         escalation_rate=baseline_data.get("escalation_rate", 0.0)
     )
     
-    # Calculate REVIVE metrics from DB
-    totals = get_recovery_totals(db)
+    # Calculate REVIVE metrics strictly from lab cases (benchmark isolation)
+    totals = get_recovery_totals(db, origin="lab")
     
-    total_cases = db.query(RevenueRiskCase).count()
-    recovered_cases = db.query(RevenueRiskCase).filter(RevenueRiskCase.status == CaseStatus.RECOVERED.value).count()
-    escalated_cases = db.query(RevenueRiskCase).filter(RevenueRiskCase.status == CaseStatus.ESCALATED.value).count()
+    total_cases = db.query(RevenueRiskCase).filter(RevenueRiskCase.origin == "lab").count()
+    recovered_cases = db.query(RevenueRiskCase).filter(
+        RevenueRiskCase.origin == "lab",
+        RevenueRiskCase.status == CaseStatus.RECOVERED.value
+    ).count()
+    escalated_cases = db.query(RevenueRiskCase).filter(
+        RevenueRiskCase.origin == "lab",
+        RevenueRiskCase.status == CaseStatus.ESCALATED.value
+    ).count()
     
     revive_recovery_rate = recovered_cases / max(total_cases, 1)
     revive_escalation_rate = escalated_cases / max(total_cases, 1)

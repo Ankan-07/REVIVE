@@ -17,6 +17,7 @@ def create_case(db: Session, data: RevenueRiskCaseCreate) -> RevenueRiskCaseRead
         id=case_id,
         customer_id=data.customer_id,
         case_type=data.case_type.value if hasattr(data.case_type, "value") else str(data.case_type),
+        origin=getattr(data, "origin", "lab") or "lab",
         status=CaseStatus.DETECTED.value,
         amount_at_risk=data.amount_at_risk,
         priority=data.priority.value if hasattr(data.priority, "value") else str(data.priority),
@@ -65,12 +66,14 @@ def get_case(db: Session, case_id: str) -> Optional[RevenueRiskCaseRead]:
 
 
 @traceable(name="service.case.list", run_type="tool")
-def list_cases(db: Session, skip: int = 0, limit: int = 100) -> List[RevenueRiskCaseRead]:
+def list_cases(db: Session, skip: int = 0, limit: int = 100, origin: Optional[str] = None) -> List[RevenueRiskCaseRead]:
     # Newest first (id as a deterministic tiebreaker): keeps pagination stable and matches the
     # dashboard's "Recent Revenue Risk Cases" intent. Without an ORDER BY the slice is arbitrary.
+    query = db.query(RevenueRiskCase)
+    if origin:
+        query = query.filter(RevenueRiskCase.origin == origin)
     items = (
-        db.query(RevenueRiskCase)
-        .order_by(RevenueRiskCase.created_at.desc(), RevenueRiskCase.id.desc())
+        query.order_by(RevenueRiskCase.created_at.desc(), RevenueRiskCase.id.desc())
         .offset(skip)
         .limit(limit)
         .all()

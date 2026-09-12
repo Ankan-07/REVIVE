@@ -9,7 +9,7 @@ The HTTP `client` is injected and duck-typed -- anything with `.post(path, json=
 `resp` has `.status_code` and `.json()`. Production passes an `httpx.Client` pointed at this same
 API; tests pass a FastAPI `TestClient` bound to an in-memory DB (both exercise the real route).
 """
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
@@ -46,7 +46,9 @@ def _scan_uncased_failed_payments(db: Session) -> List[Dict[str, Any]]:
 
 
 @traceable(name="service.detector.emit_failed_payment_events", run_type="chain")
-def emit_failed_payment_events(db: Session, client) -> Dict[str, Any]:
+def emit_failed_payment_events(
+    db: Session, client, headers: Optional[Dict[str, str]] = None
+) -> Dict[str, Any]:
     """Detect uncased failed payments and emit a `PAYMENT_FAILED` event for each over HTTP.
 
     Idempotent: payments that already have a case are skipped at scan time, and the `/events/`
@@ -72,7 +74,11 @@ def emit_failed_payment_events(db: Session, client) -> Dict[str, Any]:
             currency=item["currency"],
         ).model_dump(mode="json")
 
-        resp = client.post("/events/", json=payload)  # trailing slash avoids a 307 redirect
+        post_kwargs: Dict[str, Any] = {"json": payload}
+        if headers:
+            post_kwargs["headers"] = headers
+
+        resp = client.post("/events/", **post_kwargs)  # trailing slash avoids a 307 redirect
 
         try:
             body = resp.json()

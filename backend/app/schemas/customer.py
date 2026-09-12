@@ -8,6 +8,7 @@ class CustomerBase(BaseModel):
     email: EmailStr
     phone: Optional[str] = None
     segment: Optional[str] = "Standard"
+    origin: str = "lab"
     ltv_amount: float = 0.0
     risk_score: float = 0.0
 

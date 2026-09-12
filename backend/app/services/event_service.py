@@ -76,12 +76,19 @@ def handle_event(db: Session, event: EventPayload):
 
         recovery_probability = _initial_recovery_probability(db, payment, customer)
 
+        origin = "lab"
+        if payment and hasattr(payment, "origin") and payment.origin:
+            origin = payment.origin
+        elif customer and hasattr(customer, "origin") and customer.origin:
+            origin = customer.origin
+
         # Create Case
         case = RevenueRiskCase(
             id=generate_id("RR", db),
             customer_id=event.customer_id,
             payment_id=event.payment_id,
             case_type=CaseType.FAILED_PAYMENT.value,
+            origin=origin,
             status=CaseStatus.DETECTED.value,
             amount_at_risk=amount_at_risk,
             priority=priority,

@@ -13,6 +13,7 @@ def create_customer(db: Session, data: CustomerCreate) -> CustomerRead:
         email=data.email,
         phone=data.phone,
         segment=data.segment,
+        origin=getattr(data, "origin", "lab") or "lab",
         ltv_amount=data.ltv_amount,
         risk_score=data.risk_score,
     )
@@ -29,6 +30,9 @@ def get_customer(db: Session, customer_id: str) -> Optional[CustomerRead]:
     return CustomerRead.model_validate(db_obj)
 
 
-def list_customers(db: Session, skip: int = 0, limit: int = 100) -> List[CustomerRead]:
-    items = db.query(Customer).offset(skip).limit(limit).all()
+def list_customers(db: Session, skip: int = 0, limit: int = 100, origin: Optional[str] = None) -> List[CustomerRead]:
+    query = db.query(Customer)
+    if origin:
+        query = query.filter(Customer.origin == origin)
+    items = query.offset(skip).limit(limit).all()
     return [CustomerRead.model_validate(item) for item in items]

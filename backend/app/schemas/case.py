@@ -8,6 +8,7 @@ class RevenueRiskCaseBase(BaseModel):
     customer_id: str
     case_type: CaseType
     amount_at_risk: float
+    origin: str = "lab"
     priority: Priority = Priority.MEDIUM
     risk_score: float = 0.0
 
