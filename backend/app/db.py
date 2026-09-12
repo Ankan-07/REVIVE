@@ -9,14 +9,23 @@ def utc_now() -> datetime:
     """Return timezone-aware current UTC datetime."""
     return datetime.now(timezone.utc)
 
+from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
+
 def normalize_db_url(raw_url: str) -> str:
-    """Ensure PostgreSQL connection strings use the psycopg v3 driver prefix."""
+    """Ensure PostgreSQL connection strings use the psycopg v3 driver prefix and strip invalid libpq options."""
     if not raw_url:
         return raw_url
     if raw_url.startswith("postgresql://"):
-        return "postgresql+psycopg://" + raw_url[len("postgresql://"):]
-    if raw_url.startswith("postgres://"):
-        return "postgresql+psycopg://" + raw_url[len("postgres://"):]
+        raw_url = "postgresql+psycopg://" + raw_url[len("postgresql://"):]
+    elif raw_url.startswith("postgres://"):
+        raw_url = "postgresql+psycopg://" + raw_url[len("postgres://"):]
+
+    if "pgbouncer=" in raw_url:
+        parsed = urlsplit(raw_url)
+        query_params = parse_qsl(parsed.query)
+        filtered_params = [(k, v) for k, v in query_params if k.lower() != "pgbouncer"]
+        raw_url = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(filtered_params), parsed.fragment))
+
     return raw_url
 
 
