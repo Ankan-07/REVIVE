@@ -41,8 +41,11 @@ class Settings(BaseSettings):
     admin_alert_email: str = ""  # e.g. ops@yourdomain.com
     hmac_failure_alert_threshold: int = 10  # alert if > N failures in 5 min
 
-    # Worker / Redis (Phase A3 stub — fully wired in A4)
+    # Worker / Redis (Phase A4)
     redis_url: str = "redis://redis:6379"
+    # When True, POST /cases/{id}/run-agent runs synchronously (dev/test convenience).
+    # When False (production background mode), it enqueues to ARQ and returns 202 Accepted.
+    sync_run_agent: bool = True
 
     # Vite dev server hops to the next free port (5173 -> 5174 -> ...) when one is taken, so allow
     # the common local dev ports for both hostnames rather than pinning a single one.
