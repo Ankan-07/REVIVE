@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     simulation_seed: int = 42
     # Base URL the detector uses to POST events back to this same API over real HTTP.
     internal_api_base_url: str = "http://127.0.0.1:8000"
+    # Environment & Production Guards (Phase A2, A3)
+    app_env: str = "dev"
+    admin_allowed_in_prod: bool = False
+    bootstrap_api_key: str = ""
+    session_secret_key: str = "revive-insecure-dev-secret-key-change-in-production"
+    session_ttl_seconds: int = 28800  # 8 hours
+
     # Vite dev server hops to the next free port (5173 -> 5174 -> ...) when one is taken, so allow
     # the common local dev ports for both hostnames rather than pinning a single one.
     cors_origins: List[str] = [
