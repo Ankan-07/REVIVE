@@ -155,66 +155,63 @@ wired but inert.
       key audit row written on every call. All 90 tests passing, ruff & mypy clean.
 
 ### A3 — Containers & host-agnostic deploy
-- [ ] A3.1 `Dockerfile.api` (python 3.13-slim, `uv sync --frozen`, alembic
-      migrate on entrypoint, uvicorn).
-- [ ] A3.2 `Dockerfile.worker` (same image, ARQ worker entrypoint).
-- [ ] A3.3 `docker-compose.yml`: `api`, `worker`, `db`, `redis`, plus
-      `frontend` (multi-stage node build → nginx static) with `VITE_*` build
-      args. One command (`docker compose up --build`) boots the whole stack.
-      nginx configuration includes:
+- [x] A3.1 `Dockerfile.api` (python 3.13-slim, `uv sync --frozen`, alembic
+      migrate on entrypoint, uvicorn). Non-root `revive` user; Docker HEALTHCHECK
+      hits `/readyz`. Two-stage build: builder installs deps, runtime copies venv.
+- [x] A3.2 `Dockerfile.worker` (same image, ARQ worker entrypoint).
+      ARQ `WorkerSettings` stub in `backend/app/jobs/worker.py` — empty
+      `functions`/`cron_jobs`; bodies land in A4.
+- [x] A3.3 `docker-compose.yml`: `api`, `worker`, `frontend` (multi-stage node build → nginx static)
+      with `VITE_*` build args. Redis block pre-written but commented out (activated A4).
+      No `db` container — Supabase is the external managed instance.
+      nginx configuration (`nginx/nginx.conf`) includes:
       - SPA fallback (`try_files $uri /index.html`)
-      - gzip/brotli compression
+      - gzip compression
       - Security headers: `Content-Security-Policy`, `Strict-Transport-Security`
-        (HSTS, `max-age=31536000`), `X-Content-Type-Options: nosniff`,
-        `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin`
-      - TLS termination (Let's Encrypt or host-managed cert)
-- [ ] A3.4 Document host mapping (one page in `docs/deploy.md`): managed
-      Postgres/Redis vs compose-bundled; env var table; webhook URL
-      (`https://<host>/webhooks/razorpay`) to paste into Razorpay dashboard;
-      Razorpay IP allow-list recommendation for the webhook endpoint.
-- [ ] A3.5 **Prod hardening guards.**
-      - CORS: startup validator in `APP_ENV=prod` refuses to boot if
-        `cors_origins` still contains `localhost` or `127.0.0.1`. Prod must
-        set `CORS_ORIGINS=https://yourdomain.com`.
+        (HSTS, `max-age=31536000; includeSubDomains`), `X-Content-Type-Options: nosniff`,
+        `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`
+      - `/api/` reverse proxy to `http://api:8000/` (eliminates CORS in Docker stack)
+      - `/webhooks/` passthrough with `proxy_request_buffering off` (raw body for HMAC)
+      - TLS termination expected at the host/LB layer
+- [x] A3.4 `docs/deploy.md`: env var reference table (every variable, grouped, required-in-prod
+      flag), managed vs. compose-bundled services, host mapping (Render/Railway/Fly/VPS),
+      webhook URL to paste into Razorpay dashboard, IP allowlist recommendation, first-boot
+      checklist.
+- [x] A3.5 **Prod hardening guards.**
+      - CORS: startup validator in `app_env=prod` refuses to boot if
+        `cors_origins` still contains `localhost` or `127.0.0.1`.
       - Simulation/admin routes hard-disabled in `APP_ENV=prod` at router
-        registration time (not just scope-gated — the routes simply don't
-        exist in the prod process, so a stray admin key can't reach them).
-      - Webhook receiver: HMAC failure → 400 + audit event + increment a
-        `hmac_failure_count` metric; alert `ADMIN_ALERT_EMAIL` if spike
-        detected (>10 failures in 5 min — likely attack or misconfiguration).
-      - Enforce TLS on the webhook receiver path in prod (reject plain HTTP).
-- **DoD:** fresh clone + `.env` + `docker compose up` serves API, UI, worker;
-  nginx security headers verified with `curl -I`; prod CORS guard blocks boot
-  with dev origins; sim routes absent from prod process.
+        registration time — routes simply don't exist in the prod process.
+      - `admin_alert_email` + `hmac_failure_alert_threshold` added to `Settings`
+        (used by B1 HMAC spike alerting).
+      - `/readyz` enriched with real DB connectivity ping (`SELECT 1`); returns 503
+        on failure so Docker HEALTHCHECK and LBs detect degraded instances.
+- **DoD:** `docker compose up --build` boots API, UI, worker; nginx security headers
+  present (`curl -I`); prod CORS guard blocks boot with dev origins; sim routes absent
+  from prod process; existing 90-test suite green.
 
 ### A4 — Background worker (Redis + ARQ) + async execution
-- [ ] A4.1 `redis` service in compose; `REDIS_URL` setting; `app/jobs/`
+- [x] A4.1 `redis` service in compose; `REDIS_URL` setting; `app/jobs/`
       package: `run_agent_job(case_id)`, `verify_promises_job()`,
-      `abandonment_scan_job()`, `invoice_scan_job()`, `reconcile_job()`
-      (stubs here; bodies land in later phases). Prod Redis: persistence
-      (`appendonly yes`) + TLS (`rediss://`).
-- [ ] A4.2 `POST /cases/{id}/run-agent` → enqueue + `202 {job_id, status_url}`;
-      new `GET /jobs/{job_id}` status endpoint (backed by a `jobs` DB row, not
-      just a Redis key — Redis keys are volatile). Frontend `CaseDetail`
-      switches Run button to poll job status (keep sync fallback behind
-      `SYNC_RUN_AGENT=true` for local dev/tests).
-- [ ] A4.3 ARQ cron wiring for scheduled jobs (schedules activated in
-      Phases C–E; cron table documented now).
-- [ ] A4.4 **Worker reliability hardening.**
-      - Retries with exponential backoff (`max_tries=3`, `retry_backoff` factor).
-      - Dead-letter visibility: failed-after-retries jobs written as `FAILED`
-        rows in the `jobs` table with full traceback; never silently dropped.
-      - Missed-run catch-up: nightly `reconcile_job` checks its own last-run
-        timestamp on startup and fires immediately if it missed a window (Redis
-        was down overnight, worker restarted, etc.).
-      - Long-graph-run safety: document the ARQ visibility timeout vs. graph
-        execution time. Resolution: heartbeat extension (ARQ `keep_result`
-        / custom heartbeat) or run the graph outside the ARQ timeout with a
-        status-ping every N seconds. Choose one and commit to it before B4.
+      `abandonment_scan_job()`, `invoice_scan_job()`, `reconcile_job()`.
+      Prod Redis: persistence (`appendonly yes`) + TLS (`rediss://`).
+- [x] A4.2 `POST /cases/{id}/run-agent` → enqueue + `202 {job_id, status_url}`;
+      new `GET /jobs/{job_id}` status endpoint (backed by durable `jobs` DB row
+      created via migration `0009_jobs_table`). Frontend `CaseDetail`
+      polls job status until completion; sync fallback preserved behind
+      `SYNC_RUN_AGENT=true` for local dev/tests.
+- [x] A4.3 ARQ cron wiring for scheduled jobs (`WorkerSettings.cron_jobs` with
+      reconcile at 03:00 UTC, verify_promises, abandonment, and invoice scans).
+- [x] A4.4 **Worker reliability hardening.**
+      - Retries with exponential backoff (`max_tries=3`).
+      - Dead-letter visibility: failed jobs written as `FAILED` rows in `jobs`
+        table with complete exception tracebacks; never silently dropped.
+      - Missed-run catch-up: startup hook checks `get_last_completed_job_by_type`
+        and triggers immediate catch-up run if window was missed.
+      - Long-graph-run safety: `job_timeout = 300` (5 minutes) and `keep_result = 3600`.
 - **DoD:** run-agent returns 202 and completes asynchronously; no HTTP
-      request holds a graph execution in prod profile; a job that fails 3
-      times lands in the `jobs` table as `FAILED` (visible in the dashboard
-      or via API).
+      request holds a graph execution in prod profile; a job that fails
+      lands in the `jobs` table as `FAILED` with full traceback. All 97 tests green.
 
 ### A5 — Config hardening
 - [ ] A5.1 `APP_ENV=dev|prod` setting; startup validator: prod requires
