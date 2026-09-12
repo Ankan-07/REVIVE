@@ -12,7 +12,7 @@ RUN npm ci
 # VITE_API_URL is the public URL of the API from the browser's perspective.
 # Inside the Docker stack (via Nginx proxy) this is typically just "" (empty —
 # same origin, proxied to api:8000 by nginx). Override for external deployments.
-ARG VITE_API_URL=""
+ARG VITE_API_URL="/api"
 ENV VITE_API_URL=$VITE_API_URL
 
 COPY frontend/ ./
@@ -33,6 +33,6 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 EXPOSE 80
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget -q --spider http://localhost/healthz-static || exit 1
+    CMD wget -q --spider http://127.0.0.1/healthz-static || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]
