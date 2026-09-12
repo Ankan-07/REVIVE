@@ -4,17 +4,19 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.auth import require_api_key
 from app.db import get_db
 from app.schemas.analytics import RecoveryTotalsResponse, InterventionStatsResponse, BaselineComparisonResponse
 from app.services import analytics_service
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_api_key("operator"))])
 
 @router.get("/recovery", response_model=RecoveryTotalsResponse)
 def get_recovery_totals(
     start_date: Optional[datetime] = Query(None, description="Filter by case creation start date (ISO 8601)"),
     end_date: Optional[datetime] = Query(None, description="Filter by case creation end date (ISO 8601)"),
     case_type: Optional[str] = Query(None, description="Filter by case type"),
+    origin: Optional[str] = Query(None, description="Filter by case origin (e.g. 'lab', 'live')"),
     db: Session = Depends(get_db),
 ):
     """
@@ -25,6 +27,7 @@ def get_recovery_totals(
         start_date=start_date,
         end_date=end_date,
         case_type=case_type,
+        origin=origin,
     )
 
 @router.get("/interventions", response_model=InterventionStatsResponse)
@@ -32,6 +35,7 @@ def get_intervention_stats(
     start_date: Optional[datetime] = Query(None, description="Filter by case creation start date (ISO 8601)"),
     end_date: Optional[datetime] = Query(None, description="Filter by case creation end date (ISO 8601)"),
     case_type: Optional[str] = Query(None, description="Filter by case type"),
+    origin: Optional[str] = Query(None, description="Filter by case origin (e.g. 'lab', 'live')"),
     db: Session = Depends(get_db),
 ):
     """
@@ -42,6 +46,7 @@ def get_intervention_stats(
         start_date=start_date,
         end_date=end_date,
         case_type=case_type,
+        origin=origin,
     )
 
 @router.get("/baseline", response_model=BaselineComparisonResponse)

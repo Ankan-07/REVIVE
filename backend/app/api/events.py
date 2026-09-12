@@ -1,13 +1,14 @@
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from app.auth import require_api_key
 from app.config import settings
 from app.db import get_db
 from app.schemas.events import EventPayload, DetectionSummary
 from app.services.event_service import handle_event
 from app.services.detector import emit_failed_payment_events
 
-router = APIRouter(prefix="/events", tags=["Events"])
+router = APIRouter(prefix="/events", tags=["Events"], dependencies=[Depends(require_api_key("internal"))])
 
 
 @router.post("/")

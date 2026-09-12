@@ -12,6 +12,7 @@ fully simulated (tests run hermetic with the keys unset).
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.auth import require_api_key
 from app.db import get_db
 from app.schemas.checkout import (
     CreateOrderRequest,
@@ -30,7 +31,11 @@ def _http(error: razorpay_service.RazorpayServiceError) -> HTTPException:
 
 
 @router.post("/create-order", response_model=CreateOrderResponse)
-def create_order(body: CreateOrderRequest, db: Session = Depends(get_db)):
+def create_order(
+    body: CreateOrderRequest,
+    auth=Depends(require_api_key("operator")),
+    db: Session = Depends(get_db),
+):
     """Validate a FAILED payment and create a real Razorpay order for its amount."""
     try:
         result = razorpay_service.create_order_for_payment(db, payment_id=body.payment_id)

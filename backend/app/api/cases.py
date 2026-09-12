@@ -13,10 +13,11 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.agent.runner import run_agent
+from app.auth import require_api_key
 from app.db import get_db, get_session_factory
 from app.models.audit import AuditEvent
 from app.models.outcome import RecoveryOutcome
@@ -24,7 +25,7 @@ from app.schemas.agent import RunAgentResponse, TimelineEntry
 from app.schemas.case import RevenueRiskCaseRead
 from app.services import case_service
 
-router = APIRouter(prefix="/cases", tags=["Cases"])
+router = APIRouter(prefix="/cases", tags=["Cases"], dependencies=[Depends(require_api_key("operator"))])
 
 
 def get_checkpointer():
@@ -34,8 +35,13 @@ def get_checkpointer():
 
 
 @router.get("", response_model=List[RevenueRiskCaseRead])
-def list_cases_endpoint(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    return case_service.list_cases(db, skip=skip, limit=limit)
+def list_cases_endpoint(
+    skip: int = 0,
+    limit: int = 100,
+    origin: Optional[str] = Query(None, description="Filter by case origin (e.g. 'lab', 'live')"),
+    db: Session = Depends(get_db),
+):
+    return case_service.list_cases(db, skip=skip, limit=limit, origin=origin)
 
 
 @router.get("/{case_id}", response_model=RevenueRiskCaseRead)

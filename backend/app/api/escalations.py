@@ -4,11 +4,12 @@ from sqlalchemy.orm import Session
 
 from app.agent.runner import resume_agent
 from app.api.cases import get_checkpointer
+from app.auth import AuthContext, require_api_key
 from app.db import get_db, get_session_factory
 from app.schemas.escalation import EscalationAssignRequest, EscalationRead, EscalationResolveRequest
 from app.services import escalation_service
 
-router = APIRouter(prefix="/escalations", tags=["Escalations"])
+router = APIRouter(prefix="/escalations", tags=["Escalations"], dependencies=[Depends(require_api_key("operator"))])
 
 
 @router.get("", response_model=List[EscalationRead])
@@ -30,10 +31,14 @@ def get_escalation_endpoint(escalation_id: str, db: Session = Depends(get_db)):
 def assign_escalation_endpoint(
     escalation_id: str,
     body: EscalationAssignRequest,
+    auth: AuthContext = Depends(require_api_key("operator")),
     db: Session = Depends(get_db)
 ):
-    """Assign an open escalation ticket to an operator."""
-    esc = escalation_service.assign_escalation(db, escalation_id, body.owner_id)
+    """Assign an open escalation ticket to an operator (Phase A2.4)."""
+    assigned_owner = body.owner_id
+    if not assigned_owner or assigned_owner == "CurrentOperator":
+        assigned_owner = auth.name
+    esc = escalation_service.assign_escalation(db, escalation_id, assigned_owner)
     if not esc:
         raise HTTPException(status_code=404, detail=f"Open escalation {escalation_id} not found")
     return esc
@@ -43,6 +48,7 @@ def assign_escalation_endpoint(
 def resolve_escalation_endpoint(
     escalation_id: str,
     body: EscalationResolveRequest,
+    auth: AuthContext = Depends(require_api_key("operator")),
     factory: Callable[[], Session] = Depends(get_session_factory),
     checkpointer: Optional[object] = Depends(get_checkpointer),
 ):

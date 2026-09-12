@@ -1,6 +1,7 @@
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from app.auth import require_api_key
 from app.config import settings
 from app.db import get_db
 from app.schemas.simulation import (
@@ -14,7 +15,7 @@ from app.simulation.payment_sim import simulate_payment, PaymentNotFoundError
 from app.services.detector import emit_failed_payment_events
 
 
-router = APIRouter(prefix="/simulation", tags=["Simulation"])
+router = APIRouter(prefix="/simulation", tags=["Simulation"], dependencies=[Depends(require_api_key("admin"))])
 
 
 @router.post("/run", response_model=SimulationResponse)
