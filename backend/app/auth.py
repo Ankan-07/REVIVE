@@ -62,7 +62,10 @@ def create_session_token(key_id: str, name: str, scopes: List[str]) -> str:
 
 def decode_session_token(token: str) -> Optional[dict]:
     """Decode and verify HMAC signature and expiration of a session token."""
-    if not token or "." not in token:
+    if not token:
+        return None
+    token = token.strip('"')
+    if "." not in token:
         return None
     try:
         payload_b64, signature_b64 = token.split(".", 1)
