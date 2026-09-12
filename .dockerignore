@@ -1,0 +1,45 @@
+# Git and metadata
+.git
+.gitignore
+.github
+.agents
+.agent
+.gemini
+.cursor
+.codex
+.claude
+.trae
+.kiro
+.impeccable
+.opencode
+
+# Local environment variables & secrets
+.env
+*.env.local
+
+# Python virtual environments & bytecode
+**/.venv/
+**/venv/
+**/env/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.pytest_cache/
+**/.ruff_cache/
+**/.mypy_cache/
+
+# Node & frontend build artifacts
+**/node_modules/
+**/frontend/dist/
+frontend/.npm/
+
+# Local databases, scratch files & dumps
+**/*.db
+**/*.db.bak*
+**/*.sqlite
+backend/scratch_job.py
+
+# Documentation & planning docs (not needed at runtime)
+docs/
+*.md
