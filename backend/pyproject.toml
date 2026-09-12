@@ -51,9 +51,10 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = [
-    "E",    # pycodestyle errors
-    "W",    # pycodestyle warnings
-    "F",    # pyflakes
+    "E",       # pycodestyle errors
+    "W",       # pycodestyle warnings
+    "F",       # pyflakes
+    "DTZ003",  # ban datetime.datetime.utcnow()
 ]
 ignore = [
     "E501", # line too long
