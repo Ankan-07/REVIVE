@@ -30,8 +30,26 @@ target_metadata = Base.metadata
 
 def _get_migration_url() -> str:
     """Prefer direct connection (SUPABASE_DB_URL) for migrations, fallback to DATABASE_URL (A1.5)."""
-    raw = settings.supabase_db_url or settings.database_url
-    return normalize_db_url(raw)
+    import os
+    import socket
+    from urllib.parse import urlsplit
+
+    alembic_url = os.getenv("ALEMBIC_DB_URL")
+    if alembic_url:
+        return normalize_db_url(alembic_url)
+
+    if settings.supabase_db_url:
+        try:
+            parsed = urlsplit(settings.supabase_db_url)
+            host = parsed.hostname
+            if host:
+                socket.getaddrinfo(host, parsed.port or 5432)
+                return normalize_db_url(settings.supabase_db_url)
+        except Exception:
+            # Fallback to database_url if direct Supabase host is unresolvable on current network
+            pass
+
+    return normalize_db_url(settings.database_url)
 
 
 def run_migrations_offline() -> None:
