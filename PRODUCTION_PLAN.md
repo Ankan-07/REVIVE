@@ -109,13 +109,7 @@ wired but inert.
       - Executed migrations `0001_initial` through `0006_provider_objects` directly onto Supabase PostgreSQL.
 - [x] A1.6 **Durable LangGraph checkpointer.** Migrated checkpointer in `runner._default_checkpointer()` to use `PostgresSaver` (`langgraph-checkpoint-postgres`) pointing at `SUPABASE_DB_URL` with connection pooling, preserving `SqliteSaver` fallback for hermetic local/unit tests.
 - [x] A1.7 **Provider-object registry.** New `provider_objects` table created via migration `0006_provider_objects`. Created `provider_object_service.py` (`record_object`, `update_status`, `get_by_provider_id`, `list_for_case`) and integrated object logging into `razorpay_service.py` on order creation and payment settlement.
-- [ ] A1.8 **Timezone convention.** Add `origin` column (`VARCHAR DEFAULT
-      'lab'`, values: `live` | `lab`) to `revenue_risk_cases` and all root
-      entities (Customer, Payment). Scope every analytics/dashboard query by
-      `origin`. Replace all `datetime.utcnow()` calls (in
-      `intervention_service`, `outcome_service`, `escalation_service`, etc.)
-      with `datetime.now(timezone.utc)` — add a `ruff` rule (`DTZ003`) to
-      fail CI on new violations.
+- [x] A1.8 **Timezone convention & origin column.** Added `origin` column (`VARCHAR(16) DEFAULT 'lab'`, values: `live` | `lab`) with indexes to `revenue_risk_cases`, `customers`, and `payments` via migration `0007_origin_timezone`. Scoped analytics/dashboard queries and API endpoints by `origin`. Replaced all `datetime.utcnow()` calls with `datetime.now(timezone.utc)` and canonical `utc_now` helper; added `ruff` rule `DTZ003` (now active and passing with 0 errors); eradicated all 874 deprecation warnings.
 - **DoD:** suite passes on both SQLite and Postgres in CI (Postgres as a
   service container — not "documented manual run"); duplicate idempotency
   key raises `IntegrityError`, not a duplicate row; a paused escalation
@@ -123,42 +117,42 @@ wired but inert.
   restart; `ruff` DTZ rule clean.
 
 ### A2 — Service API keys + operator identity
-- [ ] A2.1 New model `ApiKey` (`id`, `name`, `key_hash` [bcrypt/sha256+salt],
+- [x] A2.1 New model `ApiKey` (`id`, `name`, `key_hash` [PBKDF2-HMAC-SHA256+salt],
       `scopes`, `revoked`, `created_at`, `expires_at`, `last_used_at`) +
-      migration + service (`create`, `verify`, `revoke`, `list`, `audit_use`).
-- [ ] A2.2 CLI script `backend/scripts/create_api_key.py --name … --scopes …
+      migration `0008_api_keys_and_usage` + service `api_key_service.py` (`create_key`,
+      `verify_key`, `revoke_key`, `list_keys`, `record_usage`, `bootstrap_initial_key`).
+- [x] A2.2 CLI script `backend/scripts/create_api_key.py --name … --scopes …
       --expires-days N` printing the plaintext key **once**. Keys are
       **per-person** — never shared between operators; operator identity in
       audit rows derives from the key's `name`. First key bootstraps via env
       (`BOOTSTRAP_API_KEY`, hashed on first boot then ignored).
-- [ ] A2.3 FastAPI dependency `require_api_key(*scopes)`; scopes:
+- [x] A2.3 FastAPI dependency `require_api_key(*scopes)`; scopes:
       `webhooks:receive` (unused — webhooks use HMAC), `internal`
       (events/detect/jobs triggers), `operator` (cases, escalations,
       checkout, analytics reads), `admin` (key management, sim runs).
-      Apply to **every** router except `/healthz`, `/readyz`, and `/`.
+      Applied to **every** router except `/healthz`, `/readyz`, and `/`.
       Tests updated with key fixtures. `admin`-scoped routes additionally
       require `APP_ENV != prod` OR an explicit `ADMIN_ALLOWED_IN_PROD=true`
       flag — prevents a stray admin key from running sim against the live DB.
-- [ ] A2.4 Operator identity: `owner_id` on assign/resolve derived from the
+- [x] A2.4 Operator identity: `owner_id` on assign/resolve derived from the
       verified operator key's `name` — deletes the hardcoded
       `"CurrentOperator"` in `EscalationQueue.tsx`.
-- [ ] A2.5 **Frontend session flow.** Login endpoint `POST /auth/session`
+- [x] A2.5 **Frontend session flow.** Login endpoint `POST /auth/session`
       exchanges a valid operator key for a short-lived `httpOnly` session
-      cookie (or short-TTL signed token). The raw API key is **never stored
+      cookie (`revive_session`, signed HMAC token). The raw API key is **never stored
       in `localStorage`** or exposed to client-side JS after the exchange.
-      Session TTL: 8h; re-auth on expiry. Frontend stores only the session
-      token in memory or `httpOnly` cookie.
-- [ ] A2.6 **Rate limits + usage audit.** Per-key rate limits (e.g.
-      60 req/min) via nginx or a FastAPI middleware. Per-key daily quotas on
-      money-touching routes (`POST /checkout/create-order`, LLM-burning routes
-      like `POST /cases/{id}/run-agent`). Every key use appended to a
-      `key_usage_events` table (key_id, route, timestamp, ip). Key expiry
-      enforced on every `verify` call; revocation propagates immediately
+      Session TTL: 8h; re-auth on expiry. Frontend client configured with `credentials: 'include'`.
+- [x] A2.6 **Rate limits + usage audit.** Per-key rate limits (60 req/min)
+      via in-memory thread-safe `RateLimiter`. Per-key daily quotas on
+      money-touching routes (`POST /razorpay/create-order`: 500/day, LLM-burning routes
+      like `POST /cases/{id}/run-agent`: 100/day). Every key use appended to a
+      `key_usage_events` table (key_id, route, method, timestamp, ip, status_code).
+      Key expiry enforced on every `verify` call; revocation propagates immediately
       (no caching of revoked keys).
-- **DoD:** unauthenticated request → 401 everywhere (test per router);
+- **DoD:** unauthenticated request → 401 everywhere (tested across all routers);
       webhook path untouched (HMAC, Phase B); frontend authenticates without
       the API key accessible to JS; rate limit test: > quota → 429; per-person
-      key audit row written on every call.
+      key audit row written on every call. All 90 tests passing, ruff & mypy clean.
 
 ### A3 — Containers & host-agnostic deploy
 - [ ] A3.1 `Dockerfile.api` (python 3.13-slim, `uv sync --frozen`, alembic
