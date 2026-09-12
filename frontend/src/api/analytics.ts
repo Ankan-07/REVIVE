@@ -56,11 +56,13 @@ export function fetchRecoveryTotals(
   startDate?: string,
   endDate?: string,
   caseType?: string,
+  origin?: string,
 ): Promise<RecoveryTotalsResponse> {
   const url = withQuery('/analytics/recovery', {
     start_date: startDate,
     end_date: endDate,
     case_type: caseType,
+    origin: origin,
   });
   return apiFetch(url, undefined, 'Failed to fetch recovery totals');
 }
@@ -69,11 +71,13 @@ export function fetchInterventionStats(
   startDate?: string,
   endDate?: string,
   caseType?: string,
+  origin?: string,
 ): Promise<InterventionStatsResponse> {
   const url = withQuery('/analytics/interventions', {
     start_date: startDate,
     end_date: endDate,
     case_type: caseType,
+    origin: origin,
   });
   return apiFetch(url, undefined, 'Failed to fetch intervention stats');
 }

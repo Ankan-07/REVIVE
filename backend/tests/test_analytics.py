@@ -1,5 +1,5 @@
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -76,7 +76,7 @@ def test_analytics_totals_and_filtering(db_session):
     case1 = create_case(db_session, case1_in)
     # Manually backdate for filtering test
     case1_row = get_case_row(db_session, case1.id)
-    case1_row.created_at = datetime.utcnow() - timedelta(days=10)
+    case1_row.created_at = datetime.now(timezone.utc) - timedelta(days=10)
     db_session.commit()
 
 
@@ -159,7 +159,7 @@ def test_analytics_totals_and_filtering(db_session):
 
     # 3. Test specific filtering by date
     # Filter for cases created in the last 5 days (should only catch case 2)
-    start_date = datetime.utcnow() - timedelta(days=5)
+    start_date = datetime.now(timezone.utc) - timedelta(days=5)
     totals_recent = get_recovery_totals(db_session, start_date=start_date)
     assert totals_recent.total_cases == 1
     assert totals_recent.total_amount_at_risk == 500.0
@@ -241,7 +241,7 @@ def test_recovery_and_intervention_endpoints_over_http(db_session, client):
     assert body["total_net_recovered"] == 975.0  # 1000 - 5 - 20
 
     # Query-param coercion: a future start_date filters everything out.
-    future = (datetime.utcnow() + timedelta(days=1)).isoformat()
+    future = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
     resp_future = client.get("/analytics/recovery", params={"start_date": future})
     assert resp_future.status_code == 200, resp_future.text
     assert resp_future.json()["total_cases"] == 0

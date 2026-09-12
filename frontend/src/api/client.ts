@@ -6,7 +6,11 @@ export interface HealthResponse {
 
 /** Shared JSON fetch against the API base URL, with a human-readable error on non-2xx. */
 export async function apiFetch<T>(path: string, init?: RequestInit, label?: string): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, init);
+  const options: RequestInit = {
+    credentials: 'include',
+    ...init,
+  };
+  const res = await fetch(`${API_BASE_URL}${path}`, options);
   if (!res.ok) {
     throw new Error(`${label || `Request to ${path}`} failed with status ${res.status}`);
   }
