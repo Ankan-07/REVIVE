@@ -16,6 +16,7 @@ from app.models.outcome import RecoveryOutcome
 from app.models.simulation import SimulationRun
 from app.models.provider_event import ProviderEvent
 from app.models.provider_object import ProviderObject
+from app.models.api_key import ApiKey, KeyUsageEvent
 
 __all__ = [
     "Customer",
@@ -36,4 +37,6 @@ __all__ = [
     "SimulationRun",
     "ProviderEvent",
     "ProviderObject",
+    "ApiKey",
+    "KeyUsageEvent",
 ]
