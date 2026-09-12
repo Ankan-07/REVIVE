@@ -259,7 +259,7 @@ class WorkerSettings:
     # Timeout per job execution (5 minutes: ensures long AI graph runs complete safely).
     job_timeout = 300
 
-    @classmethod
-    def redis_settings(cls) -> RedisSettings:  # type: ignore[override]
-        redis_url: str = getattr(settings, "redis_url", "redis://redis:6379")
-        return RedisSettings.from_dsn(redis_url)
+    # Redis connection settings for ARQ pool
+    redis_settings: RedisSettings = RedisSettings.from_dsn(
+        getattr(settings, "redis_url", "redis://redis:6379")
+    )
