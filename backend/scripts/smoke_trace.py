@@ -6,7 +6,6 @@ backend_dir = Path(__file__).resolve().parent.parent
 if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
-import app.observability
 from app.config import settings
 from langsmith import traceable
 from langchain_openai import ChatOpenAI
@@ -31,9 +30,9 @@ def run_smoke_test():
     print(f"Sending prompt: '{prompt}'")
 
     response = llm.invoke(prompt)
-    print(f"\n--- LLM Response ---")
+    print("\n--- LLM Response ---")
     print(response.content)
-    print(f"--------------------")
+    print("--------------------")
     print(f"\n[OK] Smoke test complete. Trace sent to LangSmith project: '{settings.langsmith_project}'")
 
 

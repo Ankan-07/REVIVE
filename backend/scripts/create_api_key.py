@@ -55,7 +55,7 @@ def main():
         print(f"Scopes:       {key_record.scopes}")
         print(f"Expires:      {key_record.expires_at or 'Never'}")
         print("-" * 70)
-        print(f"PLAINTEXT KEY (PRINTED ONCE — STORE IN A SECURE PASSWORD MANAGER):")
+        print("PLAINTEXT KEY (PRINTED ONCE — STORE IN A SECURE PASSWORD MANAGER):")
         print(f"\n    {raw_key}\n")
         print("=" * 70)
     except Exception as exc:
