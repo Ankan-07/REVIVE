@@ -37,6 +37,20 @@ export interface RunAgentResponse {
   timeline: TimelineEntry[];
 }
 
+export interface JobDetail {
+  id: string;
+  job_type: string;
+  status: 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+  case_id?: string | null;
+  payload_json?: any;
+  result_json?: any;
+  error_message?: string | null;
+  traceback?: string | null;
+  created_at: string;
+  started_at?: string | null;
+  completed_at?: string | null;
+}
+
 export function getCase(caseId: string): Promise<RevenueRiskCaseRead> {
   return apiFetch(`/cases/${caseId}`, undefined, 'Failed to fetch case');
 }
@@ -49,6 +63,26 @@ export function getCaseAudit(caseId: string): Promise<TimelineEntry[]> {
   return apiFetch(`/cases/${caseId}/audit`, undefined, 'Failed to fetch case audit');
 }
 
-export function runAgent(caseId: string): Promise<RunAgentResponse> {
-  return apiFetch(`/cases/${caseId}/run-agent`, { method: 'POST' }, 'Failed to run agent');
+export function getJob(jobId: string): Promise<JobDetail> {
+  return apiFetch(`/jobs/${jobId}`, undefined, 'Failed to fetch job status');
+}
+
+export async function runAgent(caseId: string): Promise<RunAgentResponse | JobDetail> {
+  const res = await apiFetch<any>(`/cases/${caseId}/run-agent`, { method: 'POST' }, 'Failed to run agent');
+  if (res && res.job_id) {
+    // Poll the background worker job status until terminal state (COMPLETED / FAILED)
+    const maxPolls = 60; // Up to 90 seconds (60 * 1.5s)
+    for (let i = 0; i < maxPolls; i++) {
+      await new Promise((r) => setTimeout(r, 1500));
+      const job = await getJob(res.job_id);
+      if (job.status === 'COMPLETED' || job.status === 'FAILED') {
+        if (job.status === 'FAILED') {
+          throw new Error(job.error_message || 'Background agent run failed');
+        }
+        return job;
+      }
+    }
+    throw new Error('Agent execution timed out in background worker');
+  }
+  return res as RunAgentResponse;
 }

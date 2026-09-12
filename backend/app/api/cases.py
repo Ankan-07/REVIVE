@@ -11,19 +11,23 @@ test DB only one session may be active on the shared connection at a time. So it
 """
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.agent.runner import run_agent
 from app.auth import require_api_key
+from app.config import settings
 from app.db import get_db, get_session_factory
+from app.jobs import enqueue_job
 from app.models.audit import AuditEvent
 from app.models.outcome import RecoveryOutcome
 from app.schemas.agent import RunAgentResponse, TimelineEntry
 from app.schemas.case import RevenueRiskCaseRead
-from app.services import case_service
+from app.schemas.job import JobEnqueueResponse
+from app.services import case_service, job_service
 
 router = APIRouter(prefix="/cases", tags=["Cases"], dependencies=[Depends(require_api_key("operator"))])
 
@@ -57,9 +61,14 @@ def get_case_audit_endpoint(case_id: str, db: Session = Depends(get_db)):
     return _timeline(db, case_id)
 
 
-@router.post("/{case_id}/run-agent", response_model=RunAgentResponse)
-def run_agent_endpoint(
+@router.post(
+    "/{case_id}/run-agent",
+    response_model=Union[RunAgentResponse, JobEnqueueResponse],
+    responses={202: {"model": JobEnqueueResponse}},
+)
+async def run_agent_endpoint(
     case_id: str,
+    sync: Optional[bool] = Query(None, description="Force synchronous execution"),
     factory: Callable[[], Session] = Depends(get_session_factory),
     checkpointer: Optional[object] = Depends(get_checkpointer),
 ):
@@ -72,13 +81,45 @@ def run_agent_endpoint(
     if not exists:
         raise HTTPException(status_code=404, detail=f"Case {case_id} not found")
 
-    run_agent(case_id, session_factory=factory, checkpointer=checkpointer)
+    is_sync = sync if sync is not None else settings.sync_run_agent
 
+    if is_sync:
+        run_agent(case_id, session_factory=factory, checkpointer=checkpointer)
+        db = factory()
+        try:
+            return _build_response(db, case_id)
+        finally:
+            db.close()
+
+    # Asynchronous execution via Redis + ARQ (Phase A4.2)
     db = factory()
     try:
-        return _build_response(db, case_id)
+        job = job_service.create_job(db, job_type="run_agent", case_id=case_id)
     finally:
         db.close()
+
+    try:
+        await enqueue_job("run_agent_job", case_id, job_id=job.id)
+    except Exception as exc:
+        db = factory()
+        try:
+            job_service.mark_failed(db, job.id, error_message=f"Queue error: {exc}")
+        finally:
+            db.close()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Background worker queue unavailable: {exc}",
+        )
+
+    return JSONResponse(
+        status_code=status.HTTP_202_ACCEPTED,
+        content={
+            "job_id": job.id,
+            "status": "QUEUED",
+            "status_url": f"/jobs/{job.id}",
+            "case_id": case_id,
+        },
+    )
 
 
 def _timeline(db: Session, case_id: str) -> List[TimelineEntry]:
