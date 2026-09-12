@@ -17,6 +17,7 @@ from app.models.simulation import SimulationRun
 from app.models.provider_event import ProviderEvent
 from app.models.provider_object import ProviderObject
 from app.models.api_key import ApiKey, KeyUsageEvent
+from app.models.job import Job
 
 __all__ = [
     "Customer",
@@ -39,4 +40,5 @@ __all__ = [
     "ProviderObject",
     "ApiKey",
     "KeyUsageEvent",
+    "Job",
 ]
