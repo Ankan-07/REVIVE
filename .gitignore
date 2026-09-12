@@ -12,6 +12,11 @@ venv/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
 
 # --- Databases (SQLite, seeded runs) ---
 *.db
