@@ -45,6 +45,10 @@ backend/package-lock.json
 scratch_*.py
 trigger.py
 
+# --- Local Docker overrides ---
+docker-compose.override.yml
+.compose.override.yml
+
 # --- OS / editor ---
 .DS_Store
 Thumbs.db
