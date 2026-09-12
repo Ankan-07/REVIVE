@@ -7,10 +7,11 @@ FROM python:3.13-slim AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-WORKDIR /build
+WORKDIR /app
 
 COPY backend/pyproject.toml backend/uv.lock ./
 
+ENV UV_PROJECT_ENVIRONMENT=/app/.venv
 RUN uv sync --frozen --no-dev --no-install-project
 
 # ── Stage 2: runtime ──────────────────────────────────────────────────────────
@@ -20,9 +21,11 @@ RUN groupadd -r revive && useradd -r -g revive revive
 
 WORKDIR /app
 
-COPY --from=builder /build/.venv /app/.venv
-
+# Copy application source first
 COPY backend/ ./
+
+# Copy the pre-built venv from builder
+COPY --from=builder /app/.venv /app/.venv
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \

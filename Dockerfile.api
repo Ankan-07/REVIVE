@@ -5,12 +5,13 @@ FROM python:3.13-slim AS builder
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-WORKDIR /build
+WORKDIR /app
 
 # Copy only dependency manifests first for layer caching
 COPY backend/pyproject.toml backend/uv.lock ./
 
-# Install production deps into a venv under /build/.venv
+# Install production deps into a venv under /app/.venv
+ENV UV_PROJECT_ENVIRONMENT=/app/.venv
 RUN uv sync --frozen --no-dev --no-install-project
 
 # ── Stage 2: runtime ─────────────────────────────────────────────────────────
@@ -21,11 +22,11 @@ RUN groupadd -r revive && useradd -r -g revive revive
 
 WORKDIR /app
 
-# Copy the pre-built venv from builder
-COPY --from=builder /build/.venv /app/.venv
-
-# Copy application source
+# Copy application source first
 COPY backend/ ./
+
+# Copy the pre-built venv from builder
+COPY --from=builder /app/.venv /app/.venv
 
 # Make venv binaries available without activating
 ENV PATH="/app/.venv/bin:$PATH" \
@@ -43,4 +44,4 @@ EXPOSE 8000
 # Entrypoint: migrate then serve.
 # ALEMBIC_DB_URL should point at the direct (non-pooled) Supabase connection string.
 # DATABASE_URL should point at the session-mode pooled URL for the app itself.
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"]
+CMD ["sh", "-c", "python -m alembic upgrade head && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"]
