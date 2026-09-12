@@ -8,7 +8,6 @@ from app.models.customer import Customer
 from app.models.order import Order
 from app.models.payment import Payment
 from app.models.metric import GatewayMetric
-from app.schemas.enums import PaymentStatus
 from app.simulation.generator import run_simulation
 
 

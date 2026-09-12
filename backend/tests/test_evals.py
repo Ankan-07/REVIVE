@@ -4,11 +4,10 @@ These tests ensure the agent strictly adheres to policies, stopping conditions, 
 escalation paths without relying on LLM behavior (using deterministic fallbacks).
 """
 
-import pytest
 from app.schemas.enums import CaseStatus, InterventionType, OutcomeType
 
 # We can reuse the fixtures from test_agent since they provide a great hermetic environment.
-from tests.test_agent import factory, _seed_case, _run, _event_types
+from tests.test_agent import _seed_case, _run
 from app.models.case import RevenueRiskCase
 from app.models.outcome import RecoveryOutcome
 from app.models.intervention import Intervention

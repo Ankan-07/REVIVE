@@ -5,7 +5,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.db import Base, utc_now
-from app.models.api_key import ApiKey, KeyUsageEvent
+from app.models.api_key import KeyUsageEvent
 from app.services import api_key_service
 
 

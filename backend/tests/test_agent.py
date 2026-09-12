@@ -40,7 +40,6 @@ from app.models.metric import GatewayMetric
 from app.models.outcome import RecoveryOutcome
 from app.models.payment import Payment
 from app.schemas.enums import CaseStatus, InterventionType, OutcomeType, PaymentStatus
-from app.services import intervention_service
 from app.tools.payment_tools import retry_payment
 
 

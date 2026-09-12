@@ -8,7 +8,6 @@ from sqlalchemy.pool import StaticPool
 from app.config import settings
 from app.db import Base, get_db, get_session_factory
 from app.main import app
-from app.models.api_key import ApiKey
 from app.models.escalation import Escalation
 from app.models.case import RevenueRiskCase
 from app.schemas.enums import CaseStatus

@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import timezone
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -11,11 +11,9 @@ from app.main import app
 from app.models.case import RevenueRiskCase
 from app.models.customer import Customer
 from app.models.payment import Payment
-from app.models.outcome import RecoveryOutcome
-from app.models.intervention import Intervention
 from app.schemas.customer import CustomerCreate
 from app.schemas.case import RevenueRiskCaseCreate
-from app.schemas.enums import CaseType, CaseStatus, Priority, OutcomeType, InterventionType
+from app.schemas.enums import CaseType, OutcomeType, InterventionType
 from app.services.customer_service import create_customer
 from app.services.case_service import create_case, list_cases
 from app.services.analytics_service import get_recovery_totals, get_intervention_stats
