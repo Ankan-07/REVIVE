@@ -8,6 +8,20 @@ from app.api import health, simulation, events, cases, escalations, analytics, j
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # A3.5: Production CORS guard — refuse to boot with localhost origins in prod.
+    # This prevents accidentally exposing the live API to dev browser sessions.
+    if settings.app_env.lower() == "prod":
+        bad_origins = [
+            o for o in settings.cors_origins
+            if "localhost" in o or "127.0.0.1" in o
+        ]
+        if bad_origins:
+            raise RuntimeError(
+                f"[A3.5] APP_ENV=prod but CORS_ORIGINS still contains local origins: "
+                f"{bad_origins}. "
+                "Set CORS_ORIGINS to your production domain(s) before starting."
+            )
+
     from app.db import SessionLocal
     from app.services import api_key_service
     db = SessionLocal()
@@ -37,7 +51,12 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(auth.router)
-app.include_router(simulation.router)
+
+# A3.5: Simulation and admin routes are hard-disabled in prod at registration time.
+# The routes simply don't exist in the prod process, so a stray admin key can't reach them.
+if settings.app_env.lower() != "prod":
+    app.include_router(simulation.router)
+
 app.include_router(events.router)
 app.include_router(cases.router)
 app.include_router(escalations.router)

@@ -1,0 +1,38 @@
+# syntax=docker/dockerfile:1
+# Worker image shares all dependencies with the API image.
+# Only the entrypoint differs — ARQ worker instead of uvicorn.
+#
+# ── Stage 1: dependency installer ────────────────────────────────────────────
+FROM python:3.13-slim AS builder
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+WORKDIR /build
+
+COPY backend/pyproject.toml backend/uv.lock ./
+
+RUN uv sync --frozen --no-dev --no-install-project
+
+# ── Stage 2: runtime ──────────────────────────────────────────────────────────
+FROM python:3.13-slim AS runtime
+
+RUN groupadd -r revive && useradd -r -g revive revive
+
+WORKDIR /app
+
+COPY --from=builder /build/.venv /app/.venv
+
+COPY backend/ ./
+
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# Worker has no HTTP port to probe; check that the Python process is alive
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD pgrep -f "arq" || exit 1
+
+USER revive
+
+# ARQ worker entrypoint. WorkerSettings stub lands in A3; full job bodies in A4.
+CMD ["python", "-m", "arq", "app.jobs.worker.WorkerSettings"]

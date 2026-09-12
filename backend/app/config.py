@@ -37,6 +37,13 @@ class Settings(BaseSettings):
     session_secret_key: str = "revive-insecure-dev-secret-key-change-in-production"
     session_ttl_seconds: int = 28800  # 8 hours
 
+    # Alerting (Phase A3.5 — used by B1 webhook HMAC spike detection)
+    admin_alert_email: str = ""  # e.g. ops@yourdomain.com
+    hmac_failure_alert_threshold: int = 10  # alert if > N failures in 5 min
+
+    # Worker / Redis (Phase A3 stub — fully wired in A4)
+    redis_url: str = "redis://redis:6379"
+
     # Vite dev server hops to the next free port (5173 -> 5174 -> ...) when one is taken, so allow
     # the common local dev ports for both hostnames rather than pinning a single one.
     cors_origins: List[str] = [

@@ -1,0 +1,112 @@
+# Revenue Rescue Engine — Docker Compose Stack
+#
+# Boots: api + worker + frontend (nginx).
+# Supabase is the external managed Postgres instance — no db container.
+# Redis is commented out; uncomment in Phase A4 when ARQ worker bodies land.
+#
+# Usage:
+#   cp .env.example .env && vi .env  # fill in your secrets
+#   docker compose up --build
+#   docker compose up --build -d     # detached
+
+name: revive
+
+services:
+
+  # ── API (FastAPI + uvicorn) ────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    image: revive-api:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Override DATABASE_URL to point at Supabase pooled connection in compose.
+      # These can also live in .env — env_file is merged with environment block.
+      APP_ENV: ${APP_ENV:-dev}
+      DATABASE_URL: ${DATABASE_URL}
+      SUPABASE_DB_URL: ${SUPABASE_DB_URL:-}
+      ALEMBIC_DB_URL: ${ALEMBIC_DB_URL:-}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+    ports:
+      - "8000:8000"
+    depends_on:
+      # Uncomment when redis service is added in A4:
+      # redis:
+      #   condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/readyz')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    networks:
+      - revive-net
+
+  # ── Background Worker (ARQ) ────────────────────────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    image: revive-worker:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      APP_ENV: ${APP_ENV:-dev}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+    depends_on:
+      api:
+        condition: service_healthy
+      # Uncomment when redis service is added in A4:
+      # redis:
+      #   condition: service_healthy
+    networks:
+      - revive-net
+
+  # ── Frontend (Nginx + React SPA) ───────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        # VITE_API_URL is empty when using the Nginx /api/ proxy (same-origin).
+        # Set to a full URL (e.g. https://api.yourdomain.com) for split deployments.
+        VITE_API_URL: ${VITE_API_URL:-}
+    image: revive-frontend:latest
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - revive-net
+
+  # ── Redis (ARQ job queue — activate in Phase A4) ───────────────────────────
+  # Uncomment this block in A4 and remove the dummy depends_on placeholders above.
+  #
+  # redis:
+  #   image: redis:7-alpine
+  #   restart: unless-stopped
+  #   command: redis-server --appendonly yes  # durable AOF persistence
+  #   volumes:
+  #     - redis-data:/data
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   networks:
+  #     - revive-net
+
+networks:
+  revive-net:
+    driver: bridge
+
+volumes:
+  # Uncomment in A4 alongside the redis service block:
+  # redis-data:

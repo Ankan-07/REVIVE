@@ -1,0 +1,46 @@
+# syntax=docker/dockerfile:1
+# ── Stage 1: dependency installer ───────────────────────────────────────────
+FROM python:3.13-slim AS builder
+
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+WORKDIR /build
+
+# Copy only dependency manifests first for layer caching
+COPY backend/pyproject.toml backend/uv.lock ./
+
+# Install production deps into a venv under /build/.venv
+RUN uv sync --frozen --no-dev --no-install-project
+
+# ── Stage 2: runtime ─────────────────────────────────────────────────────────
+FROM python:3.13-slim AS runtime
+
+# Non-root user for least-privilege runtime
+RUN groupadd -r revive && useradd -r -g revive revive
+
+WORKDIR /app
+
+# Copy the pre-built venv from builder
+COPY --from=builder /build/.venv /app/.venv
+
+# Copy application source
+COPY backend/ ./
+
+# Make venv binaries available without activating
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# Healthcheck — Docker marks container healthy before routing traffic
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/readyz')" || exit 1
+
+USER revive
+
+EXPOSE 8000
+
+# Entrypoint: migrate then serve.
+# ALEMBIC_DB_URL should point at the direct (non-pooled) Supabase connection string.
+# DATABASE_URL should point at the session-mode pooled URL for the app itself.
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"]
