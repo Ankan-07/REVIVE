@@ -73,7 +73,7 @@ services:
       args:
         # VITE_API_URL is empty when using the Nginx /api/ proxy (same-origin).
         # Set to a full URL (e.g. https://api.yourdomain.com) for split deployments.
-        VITE_API_URL: ${VITE_API_URL:-}
+        VITE_API_URL: ${VITE_API_URL:-/api}
     image: revive-frontend:latest
     restart: unless-stopped
     ports:
