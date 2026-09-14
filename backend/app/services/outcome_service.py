@@ -25,10 +25,12 @@ def record_outcome(
     gross_recovered: float,
     cost_total: float,
     discount_total: float = 0.0,
+    gateway_fee_paise: int = 0,
     verified: bool = True,
 ) -> RecoveryOutcome:
     """Persist and return the recovery outcome, computing net from the parts."""
-    net = gross_recovered - cost_total - discount_total
+    gateway_fee = float(gateway_fee_paise) / 100.0
+    net = gross_recovered - cost_total - discount_total - gateway_fee
     outcome = RecoveryOutcome(
         id=generate_id("OUT", db),
         case_id=case_id,
@@ -37,6 +39,7 @@ def record_outcome(
         net_recovered=net,
         cost_total=cost_total,
         discount_total=discount_total,
+        gateway_fee_paise=gateway_fee_paise,
         verified_at=datetime.now(timezone.utc) if verified else None,
     )
     db.add(outcome)
