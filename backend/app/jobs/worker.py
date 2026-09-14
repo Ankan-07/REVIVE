@@ -22,7 +22,7 @@ from arq import cron
 from arq.connections import RedisSettings
 
 from app.agent.runner import run_agent
-from app.config import settings
+from app.config import settings, validate_environment
 from app.db import SessionLocal
 from app.models.outcome import RecoveryOutcome
 from app.services import case_service, job_service
@@ -186,8 +186,35 @@ async def reconcile_job(ctx: Dict[str, Any], job_id: Optional[str] = None) -> Di
         db.close()
 
 
+async def process_webhook_event_job(ctx: Dict[str, Any], event_id: str, job_id: Optional[str] = None) -> Dict[str, Any]:
+    """Process an enqueued provider webhook event in the background (Phase B1.2)."""
+    from app.services import provider_event_service
+
+    session_factory = ctx.get("session_factory", SessionLocal)
+    db = session_factory()
+    try:
+        if job_id:
+            job_service.mark_running(db, job_id)
+
+        result = provider_event_service.process_provider_event(db, event_id=event_id)
+
+        if job_id:
+            job_service.mark_completed(db, job_id, result=result)
+        return result
+    except Exception as exc:
+        tb = traceback.format_exc()
+        logger.error(f"process_webhook_event_job failed for event {event_id}: {exc}\n{tb}")
+        if job_id:
+            job_service.mark_failed(db, job_id, error_message=str(exc), traceback_str=tb, increment_retry=True)
+        raise exc
+    finally:
+        db.close()
+
+
 async def on_startup(ctx: Dict[str, Any]) -> None:
-    """Worker initialization and missed-run catch-up detection (A4.4)."""
+    """Worker initialization, config validation (A5.1/A5.2), and missed-run catch-up detection (A4.4)."""
+    validate_environment(settings)
+
     session_factory = SessionLocal
     ctx["session_factory"] = session_factory
 
@@ -238,6 +265,7 @@ class WorkerSettings:
         abandonment_scan_job,
         invoice_scan_job,
         reconcile_job,
+        process_webhook_event_job,
     ]
 
     cron_jobs = [
