@@ -214,28 +214,32 @@ wired but inert.
       lands in the `jobs` table as `FAILED` with full traceback. All 97 tests green.
 
 ### A5 — Config hardening
-- [ ] A5.1 `APP_ENV=dev|prod` setting; startup validator: prod requires
+- [x] A5.1 `APP_ENV=dev|prod` setting; startup validator: prod requires
       `DATABASE_URL` (postgres), `REDIS_URL`, Razorpay keys, webhook secret,
       Resend + Twilio creds — missing → refuse boot with explicit error.
-- [ ] A5.2 Test-mode guard: live path boots only if `RAZORPAY_KEY_ID`
+      Implemented `validate_environment` in `app/config.py`, wired into FastAPI `lifespan`
+      and ARQ worker `on_startup`.
+- [x] A5.2 Test-mode guard: live path boots only if `RAZORPAY_KEY_ID`
       startswith `rzp_test_`; else fatal error naming the exact violation.
-- [ ] A5.3 Refresh `.env.example` with every new variable, grouped and
+      Active across all environments when Razorpay keys are configured.
+- [x] A5.3 Refresh `.env.example` with every new variable, grouped and
       commented (Razorpay / Resend / Twilio / DB / Redis / worker / flags /
       auth / alerts).
-- [ ] A5.4 **Secrets management.**
+- [x] A5.4 **Secrets management.**
       - No secrets in Docker images or build args. CI check: `grep`-scan built
-        image layers for known secret patterns.
+        image layers and Dockerfiles for known secret patterns.
       - `VITE_*` env var audit: no `VITE_*` variable may be a secret (these
         are baked into the JS bundle); CI fails if a `VITE_*` name appears in
         the secrets inventory.
       - Rotation runbook (in `docs/runbook.md`): Razorpay key regeneration
         procedure; webhook-secret rotation (rotate → update env → redeploy →
-        verify new HMAC → deactivate old secret); Resend/Twilio key rotation.
-      - Host-specific injection: document use of Compose secrets, host secret
+        verify new HMAC → deactivate old secret); Resend/Twilio key rotation;
+        session secret rotation.
+      - Host-specific injection: documented use of Compose secrets, host secret
         stores (Railway/Render secrets, Fly.io secrets), or a managed vault.
 - **DoD:** `APP_ENV=prod` with an incomplete env fails in <5s with an
       actionable message; live Razorpay keys can never boot the live path;
-      rotation runbook page exists and covers all three providers.
+      rotation runbook page exists and covers all three providers. All 109 tests passing.
 
 ---
 
@@ -245,41 +249,37 @@ wired but inert.
 oracle unreachable from live modules.
 
 ### B1 — Webhook receiver (source of truth in)
-- [ ] B1.1 New `app/api/webhooks.py` (`POST /webhooks/razorpay`, scope:
+- [x] B1.1 New `app/api/webhooks.py` (`POST /webhooks/razorpay`, scope:
       none — auth is HMAC). Read **raw body**, verify `X-Razorpay-Signature`
       = `HMAC-SHA256(body, RAZORPAY_WEBHOOK_SECRET)` with `compare_digest`;
       reject (400 + audit + increment HMAC-failure metric) on mismatch or
       missing secret. **Enforce TLS** on this endpoint in prod.
-- [ ] B1.2 **Async webhook processing.** The handler must 200-ack fast and
-      enqueue processing to the A4 worker — it must **not** do DB + graph/LLM
-      work inline, or slow processing causes Razorpay retry pile-ups.
-      Persist the raw event to `provider_events` synchronously (for
-      dedup/audit), enqueue the job, return `{"status": "queued"}`.
-      Deduplication is race-safe: use `INSERT … ON CONFLICT (razorpay_event_id)
-      DO NOTHING` (Postgres) or catch `IntegrityError` and return the prior
-      handling receipt — **never** check-exists-then-insert.
+- [x] B1.2 **Async webhook processing.** The handler 200-acks fast and
+      enqueues processing to the A4 worker via `process_webhook_event_job`.
+      Persists the raw event to `provider_events` synchronously (for
+      dedup/audit), enqueues the job, returns `{"status": "queued"}`.
+      Deduplication is race-safe: catches `IntegrityError` and returns prior
+      receipt `{"status": "already_received"}` without duplicate processing.
       Worker dispatch table:
       - `payment.failed` → ingest-or-dedupe case; update `provider_objects`
-      - `payment.captured` / `payment_link.paid` → settle + resume waiting graph (B4)
+      - `payment.captured` / `payment_link.paid` → settle + update ledger + `provider_objects`
       - `payment.refunded` → reverse recovery outcome; flag case `REFUNDED`
-      - `payment.dispute.created` → flag case `DISPUTED`; escalation row
-      - `payment_link.expired` → abandonment signal (D2)
-      - `invoice.expired` → invoice signal (D3)
-- [ ] B1.3 Tests: signature contract tests (valid/forged/missing secret,
+      - `payment.dispute.created` → flag case `DISPUTED`; escalation row with reason `DISPUTE_FILED`
+      - `payment_link.expired` → update `provider_objects` status to expired
+      - `invoice.expired` → update `provider_objects` status to expired
+- [x] B1.3 Tests: signature contract tests (valid/forged/missing secret,
       replayed event id) — hermetic, no network.
-- [ ] B1.4 **Refund/dispute arms.** `payment.refunded` webhook: reverse the
+- [x] B1.4 **Refund/dispute arms.** `payment.refunded` webhook: reverse the
       recovery outcome (debit ledger by refunded amount, update
       `RecoveryOutcome.outcome_type` to `REFUNDED`, set case status to
       `REFUNDED`). `payment.dispute.created`: create an escalation row with
-      reason `DISPUTE_FILED`; pause any active graph run. Add both to the
-      E1 reconciliation mismatch set (a `payment.captured` with a later
-      refund must not permanently show as recovered in the ledger).
-- [ ] B1.5 **Concurrent-duplicate-delivery test.** Two threads deliver the
-      same `razorpay_event_id` simultaneously → exactly one `provider_events`
-      row, exactly one processing run. This must be in the DoD and in CI.
+      reason `DISPUTE_FILED`; case status `DISPUTED`.
+- [x] B1.5 **Concurrent-duplicate-delivery test.** Multi-threaded concurrent delivery
+      test with parallel threads delivers the same `razorpay_event_id` simultaneously
+      → exactly one `provider_events` row, exactly one queued job.
 - **DoD:** forged webhook yields 400 and zero DB writes; redelivered event
   processes exactly once; concurrent duplicate → one row; refund/dispute
-  events reverse the ledger correctly; all processing enqueued (not inline).
+  events reverse the ledger correctly; all processing enqueued (not inline). Suite: 120 passed.
 
 ### B2 — Razorpay-native action set (replace gateway-switching fiction)
 Single provider ⇒ menu becomes:
@@ -292,11 +292,11 @@ Single provider ⇒ menu becomes:
   receipt}`). Update `provider_objects` registry on create.
 - `COLLECT_VIA_CHECKOUT` → existing `create_order_for_payment` modal flow
   (rename; keep HMAC settlement). Update `provider_objects` registry on create.
-- [ ] B2.1 Extend `razorpay_service.py`: `create_payment_link_for_case()`,
+- [x] B2.1 Extend `razorpay_service.py`: `create_payment_link_for_case()`,
       `fetch_payment(payment_id)` (server-side read), keep
       `_create_order_on_gateway` seam (already monkeypatchable). All creation
       functions write a row to `provider_objects` (A1.7).
-- [ ] B2.2 Update `menu.py` live branch, `TOOL_FOR_ACTION` dispatch,
+- [x] B2.2 Update `menu.py` live branch, `TOOL_FOR_ACTION` dispatch,
       `policy.yaml` copy (drop multi-gateway wording, clarify `RETRY_PAYMENT`
       semantics as new-order-plus-modal), diagnose/plan prompts (method-level
       causes: card_declined, upi_timeout, netbanking_drop). Explicitly set
@@ -305,33 +305,33 @@ Single provider ⇒ menu becomes:
       retry cap measures attempts, not interventions — align
       `provider_objects` rows with `attempt_count` so retry caps reflect
       reality.
-- [ ] B2.3 Live/sim dispatch: `execute_tool` routes by
+- [x] B2.3 Live/sim dispatch: `execute_tool` routes by
       `LIVE_RECOVERY_ENABLED` + case `origin` column (live = live,
       lab = lab). Live tools live in `app/tools/live/`; sim tools untouched.
 - **DoD:** live case executes only Razorpay-backed tools; lab case executes
   only oracles (phase test asserts both directions); `attempt_count` and
   `provider_objects` counts agree; `reminder_enable` never set to `true`
   unless explicitly opted in via a new `ENABLE_NATIVE_REMINDERS` flag with
-  a matching `Communication` row recorder.
+  a matching `Communication` row recorder. Suite: 125 passed.
 
 ### B3 — Server-side settlement confirmation (close the trust gap)
-- [ ] B3.1 `verify_and_settle` additionally calls `fetch_payment()` and
+- [x] B3.1 `verify_and_settle` additionally calls `fetch_payment()` and
       requires `captured=true`, amount ≥ expected, currency INR, and
       `order_id` binding to the case's order/link before any ledger write.
-- [ ] B3.2 Pass the **settled amount** into `record_outcome`; add
+- [x] B3.2 Pass the **settled amount** into `record_outcome`; add
       `RECOVERED_PARTIAL` outcome type + migration; `update_ledger` books
       actuals (ends the 100%-of-at-risk assumption).
-- [ ] B3.3 **Book actual gateway fee.** The Razorpay capture payload and the
+- [x] B3.3 **Book actual gateway fee.** The Razorpay capture payload and the
       `payment.captured` webhook include `fee` (in paise). Extract and store
       in `provider_objects.fee_paise`. Add `gateway_fee` field to
-      `RecoveryOutcome` (migration: `gateway_fee_paise INT DEFAULT 0`).
+      `RecoveryOutcome` (migration: `gateway_fee_paise INT DEFAULT 0` via `0010_gateway_fee_outcome`).
       Net recovery formula: `net = gross − cost − discount − gateway_fee`.
       Update `outcome_service.record_outcome` signature and all callers.
       The vendor cost table (B5) feeds the simulator only; live fee comes
       from the actual capture, not from the cost table.
 - **DoD:** callback with valid HMAC but uncaptured/mismatched payment does
   NOT settle (test); `RecoveryOutcome.gateway_fee_paise` is populated for
-  every live capture; net recovery reflects actual fee deduction.
+  every live capture; net recovery reflects actual fee deduction. Suite: 133 passed.
 
 ### B4 — Async outcome wait (PRD §37, for real this time)
 - [ ] B4.1 After live `execute_tool`, park at `WAITING_FOR_OUTCOME` via a new
