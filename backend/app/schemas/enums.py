@@ -15,6 +15,8 @@ class CaseStatus(str, Enum):
     ESCALATED = "ESCALATED"
     CLOSED_NO_RECOVERY = "CLOSED_NO_RECOVERY"
     REJECTED_BY_POLICY = "REJECTED_BY_POLICY"
+    REFUNDED = "REFUNDED"
+    DISPUTED = "DISPUTED"
 
 
 class CaseType(str, Enum):
@@ -53,6 +55,7 @@ class OutcomeType(str, Enum):
     FAILED_PERMANENT = "FAILED_PERMANENT"
     ESCALATED = "ESCALATED"
     PENDING = "PENDING"
+    REFUNDED = "REFUNDED"
 
 
 class EscalationReason(str, Enum):
@@ -62,6 +65,7 @@ class EscalationReason(str, Enum):
     AGENT_LOW_CONFIDENCE = "AGENT_LOW_CONFIDENCE"
     POLICY_REJECTION = "POLICY_REJECTION"
     MANUAL_REQUEST = "MANUAL_REQUEST"
+    DISPUTE_FILED = "DISPUTE_FILED"
 
 
 class Priority(str, Enum):
