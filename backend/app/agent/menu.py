@@ -33,11 +33,20 @@ def allowed_menu(
     entity_id: Optional[str]
     if case_type == CaseType.FAILED_PAYMENT.value:
         entity_id = context.get("payment_id")
-        actions = [
-            (InterventionType.RETRY_PAYMENT.value, payment_sim.simulate_payment),
-            (InterventionType.SWITCH_GATEWAY.value, payment_sim.simulate_payment),
-            (InterventionType.CREATE_PAYMENT_LINK.value, payment_sim.simulate_payment),
-        ]
+        origin = getattr(case_row, "origin", "lab") or "lab"
+        if origin == "live":
+            # Live track: single provider (Razorpay) -> RETRY_PAYMENT and CREATE_PAYMENT_LINK only (Phase B2)
+            actions = [
+                (InterventionType.RETRY_PAYMENT.value, payment_sim.simulate_payment),
+                (InterventionType.CREATE_PAYMENT_LINK.value, payment_sim.simulate_payment),
+            ]
+        else:
+            # Lab track: benchmark evaluation with simulated multi-gateway options
+            actions = [
+                (InterventionType.RETRY_PAYMENT.value, payment_sim.simulate_payment),
+                (InterventionType.SWITCH_GATEWAY.value, payment_sim.simulate_payment),
+                (InterventionType.CREATE_PAYMENT_LINK.value, payment_sim.simulate_payment),
+            ]
     elif case_type == CaseType.ABANDONED_CHECKOUT.value:
         entity_id = context.get("checkout_id")
         actions = [
