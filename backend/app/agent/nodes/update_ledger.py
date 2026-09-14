@@ -28,9 +28,28 @@ def update_ledger(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, An
         cost_total = totals["cost_total"]
         discount_total = totals["discount_total"]
 
+        gateway_fee_paise = 0
         if terminal == "RECOVERED":
-            gross = amount
-            outcome_type = OutcomeType.RECOVERED_FULL.value
+            if state.get("settled_amount") is not None:
+                gross = float(state["settled_amount"])
+                gateway_fee_paise = int(state.get("gateway_fee_paise") or 0)
+            else:
+                from app.services import provider_object_service
+
+                pobjs = provider_object_service.list_for_case(db, case_id)
+                captured_pobjs = [
+                    p for p in pobjs if p.object_type == "payment" and p.status == "captured" and p.amount_paise
+                ]
+                if captured_pobjs:
+                    gross = float(captured_pobjs[-1].amount_paise) / 100.0
+                    gateway_fee_paise = int(captured_pobjs[-1].fee_paise or 0)
+                else:
+                    gross = amount
+
+            if case and case.amount_at_risk and 0 < gross < float(case.amount_at_risk):
+                outcome_type = OutcomeType.RECOVERED_PARTIAL.value
+            else:
+                outcome_type = OutcomeType.RECOVERED_FULL.value
             final_status = CaseStatus.RECOVERED.value
         elif terminal == "ESCALATED":
             gross = 0.0
@@ -48,6 +67,7 @@ def update_ledger(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, An
             gross_recovered=gross,
             cost_total=cost_total,
             discount_total=discount_total,
+            gateway_fee_paise=gateway_fee_paise,
         )
 
         case_service.set_net_recovered(db, case_id, outcome.net_recovered)
@@ -62,6 +82,7 @@ def update_ledger(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, An
                 "gross_recovered": gross,
                 "cost_total": cost_total,
                 "discount_total": discount_total,
+                "gateway_fee": float(gateway_fee_paise) / 100.0,
                 "net_recovered": outcome.net_recovered,
             },
         )
