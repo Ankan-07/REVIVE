@@ -129,6 +129,19 @@ def test_razorpay_order_and_settle_records_provider_objects(db_session, monkeypa
         "_create_order_on_gateway",
         lambda **kw: {"id": "order_mock_999", "amount": kw["amount_paise"], "currency": "INR"},
     )
+    monkeypatch.setattr(
+        razorpay_service,
+        "_fetch_payment_on_gateway",
+        lambda pid: {
+            "id": pid,
+            "order_id": "order_mock_999",
+            "amount": 150000,
+            "currency": "INR",
+            "status": "captured",
+            "captured": True,
+            "fee": 3000,
+        },
+    )
 
     cust = Customer(id="CUS-099", name="Eve", email="eve@example.com")
     pay = Payment(
@@ -186,6 +199,7 @@ def test_razorpay_order_and_settle_records_provider_objects(db_session, monkeypa
     assert pay_obj.object_type == "payment"
     assert pay_obj.status == "captured"
     assert pay_obj.amount_paise == 150000
+    assert pay_obj.fee_paise == 3000
 
     order_updated = provider_object_service.get_by_provider_id(db_session, "order_mock_999")
     assert order_updated is not None

@@ -63,6 +63,20 @@ def session_and_client(monkeypatch):
     monkeypatch.setenv("RAZORPAY_KEY_ID", KEY_ID)
     monkeypatch.setenv("RAZORPAY_KEY_SECRET", KEY_SECRET)
 
+    monkeypatch.setattr(
+        razorpay_service,
+        "_fetch_payment_on_gateway",
+        lambda pid: {
+            "id": pid,
+            "order_id": "order_O1test123",
+            "amount": 500000,
+            "currency": "INR",
+            "status": "captured",
+            "captured": True,
+            "fee": 0,
+        },
+    )
+
     app.dependency_overrides[get_db] = lambda: session
     try:
         yield session, TestClient(app)
