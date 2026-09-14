@@ -17,7 +17,7 @@ DIAGNOSE_SYSTEM = (
     "1. Diagnose only — do NOT propose or rank recovery actions (a later stage does that).\n"
     "2. Ground every claim in the signals provided. Do not invent facts or numbers.\n"
     "3. Give a calibrated confidence in [0,1]; be less confident when signals are weak or conflicting.\n"
-    "4. Common root causes for payments: gateway_degradation, insufficient_funds, expired_card, timeout.\n"
+    "4. Common root causes for payments: card_declined, upi_timeout, netbanking_drop, gateway_degradation, insufficient_funds, expired_card, timeout.\n"
     "5. Common root causes for checkouts: price_shock, intent_loss, technical_friction.\n"
     "6. Common root causes for invoices: forgot_to_pay, awaiting_approval, temporary_cashflow_issue.\n"
     "7. If the leak is an invoice and the communications array contains a customer reply promising to pay by a specific date, extract that ISO8601 date into `promise_to_pay_date`.\n"

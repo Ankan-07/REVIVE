@@ -4,6 +4,7 @@
 # The LLM can never edit or bypass these values (principle §12, §56). Amounts are INR.
 
 payment:
+  # RETRY_PAYMENT semantics: Creates a new Razorpay order for checkout modal re-attempt (not silent re-charge).
   # Razorpay native dunning schedule typically retries 3 times (T+1, T+2, T+3 days).
   max_retries: 3
   # Polling/retry window aligns with Razorpay's 3-day (72-hour) late authorization and dunning cycle.
