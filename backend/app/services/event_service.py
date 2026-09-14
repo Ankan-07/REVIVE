@@ -24,8 +24,9 @@ def _initial_recovery_probability(
         return None
 
     rates = payment_sim.load_gateway_rates(db)
-    intent = customer.intent_score if customer.intent_score is not None else 0.0
-    method_health = payment.method_health if payment.method_health is not None else 1.0
+    intent = float(customer.intent_score) if customer.intent_score is not None else 0.0  # type: ignore[arg-type]
+    method_health = float(payment.method_health) if payment.method_health is not None else 1.0  # type: ignore[arg-type]
+    current_gateway = str(payment.gateway or "STRIPE")
 
     best = 0.0
     for action in (
@@ -33,7 +34,7 @@ def _initial_recovery_probability(
         InterventionType.SWITCH_GATEWAY.value,
         InterventionType.CREATE_PAYMENT_LINK.value,
     ):
-        gw_health, _ = payment_sim.gateway_health_for(rates, payment.gateway, action)
+        gw_health, _ = payment_sim.gateway_health_for(rates, current_gateway, action)
         # A payment link lets the customer re-enter a healthy instrument, so method health resets.
         mh = 1.0 if action == InterventionType.CREATE_PAYMENT_LINK.value else method_health
         best = max(best, payment_sim.recovery_probability(intent, gw_health, mh))
@@ -63,15 +64,15 @@ def handle_event(db: Session, event: EventPayload):
         payment = db.query(Payment).filter(Payment.id == event.payment_id).first()
         customer = db.query(Customer).filter(Customer.id == event.customer_id).first()
 
-        amount_at_risk = event.amount
-        if payment:
-            amount_at_risk = payment.amount
+        amount_at_risk = payment.amount if (payment and payment.amount is not None) else (event.amount or 0.0)
 
         risk_score = 0.5  # default
         priority = "MEDIUM"
         if customer:
-            risk_score = min(1.0, customer.risk_score + 0.1)  # Bump risk score for failed payment
-            if customer.ltv_amount > 5000:
+            cust_risk = customer.risk_score if customer.risk_score is not None else 0.0
+            risk_score = min(1.0, cust_risk + 0.1)  # Bump risk score for failed payment
+            ltv = customer.ltv_amount if customer.ltv_amount is not None else 0.0
+            if ltv > 5000:
                 priority = "HIGH"
 
         recovery_probability = _initial_recovery_probability(db, payment, customer)
@@ -96,14 +97,16 @@ def handle_event(db: Session, event: EventPayload):
             recovery_probability=recovery_probability,
         )
         db.add(case)
+        db.flush()  # Persist case before audit event to satisfy PostgreSQL foreign key constraint
 
         # Append the CASE_CREATED audit row through the shared recorder (one commit covers both).
+        event_type_val = event.event_type.value if hasattr(event.event_type, "value") else str(event.event_type)
         audit = recorder.record(
             db,
-            case.id,
+            case.id,  # type: ignore[arg-type]
             "CASE_CREATED",
             payload={
-                "trigger_event": event.event_type.value,
+                "trigger_event": event_type_val,
                 "payment_id": event.payment_id,
                 "initial_risk_score": risk_score,
                 "initial_recovery_probability": recovery_probability,
