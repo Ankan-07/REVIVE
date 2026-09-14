@@ -110,16 +110,31 @@ jobs:
         run: |
           echo "Verifying no VITE_* environment variables expose backend secrets..."
           # VITE_* keys in frontend must only include public IDs, never secret tokens
-          if grep -rEn "VITE_.*(SECRET|KEY_SECRET|AUTH_TOKEN|PRIVATE)" frontend/ 2>/dev/null; then
+          if grep -rEn "VITE_.*(SECRET|KEY_SECRET|AUTH_TOKEN|PRIVATE|PASSWORD)" frontend/ 2>/dev/null; then
             echo "ERROR: Found secret-like VITE_ prefix variables in frontend!"
             exit 1
           fi
           echo "VITE_* environment audit passed."
 
+      - name: Scan Dockerfiles for Hardcoded Secrets
+        run: |
+          echo "Scanning Dockerfiles for hardcoded secrets or live API key patterns..."
+          if grep -rEn "(rzp_live_|sk-[a-zA-Z0-9]{20,}|AKIA[0-9A-Z]{16}|ghp_[a-zA-Z0-9]{36})" Dockerfile* 2>/dev/null; then
+            echo "ERROR: Detected live API keys or tokens hardcoded in Dockerfile!"
+            exit 1
+          fi
+          echo "Dockerfile secret scan passed."
+
       - name: Install uv
         uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
+
+      - name: Run Config Hardening Tests
+        working-directory: backend
+        run: |
+          uv sync --extra dev
+          uv run pytest tests/test_config_hardening.py -v
 
       - name: Dependency Audit Check
         working-directory: backend
@@ -127,6 +142,7 @@ jobs:
           uv sync --extra dev
           # Run pip-audit if installed or verify lockfile integrity
           uv lock --check || echo "Lockfile verified"
+
 
   deploy-docs:
     name: Tag to Build to Deploy Pathway
