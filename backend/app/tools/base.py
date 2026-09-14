@@ -42,8 +42,8 @@ _ALLOWED_CALLERS = {"system", "operator"}
 # ---------------------------------------------------------------------------
 # ID format patterns (§18 parameter validation)
 # ---------------------------------------------------------------------------
-_CASE_ID_RE = re.compile(r"^RR-\d{5}$")
-_PAY_ID_RE = re.compile(r"^PAY-\d{5}$")
+_CASE_ID_RE = re.compile(r"^RR-[a-zA-Z0-9_-]+$")
+_PAY_ID_RE = re.compile(r"^(PAY-[a-zA-Z0-9_-]+|pay_[a-zA-Z0-9_-]+)$")
 _CHK_ID_RE = re.compile(r"^CHK-\d{5}$")
 _INV_ID_RE = re.compile(r"^INV-\d{5}$")
 
