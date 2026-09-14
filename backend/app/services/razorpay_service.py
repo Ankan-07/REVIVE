@@ -29,6 +29,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.audit import recorder
+from app.config import settings
 from app.models.case import RevenueRiskCase
 from app.models.payment import Payment
 from app.schemas.enums import CaseStatus, OutcomeType, PaymentStatus
@@ -79,6 +80,11 @@ class InvalidSignatureError(RazorpayServiceError):
         super().__init__("Signature verification failed — payment was NOT marked as paid.", status_code=400)
 
 
+class PaymentVerificationError(RazorpayServiceError):
+    def __init__(self, detail: str):
+        super().__init__(f"Payment verification failed: {detail}", status_code=400)
+
+
 class GatewayError(RazorpayServiceError):
     def __init__(self, detail: str):
         super().__init__(f"Razorpay API error: {detail}", status_code=502)
@@ -112,6 +118,31 @@ def _create_order_on_gateway(amount_paise: int, receipt: str, notes: dict) -> di
             "notes": notes,
         }
     )
+
+
+def _create_payment_link_on_gateway(
+    amount_paise: int,
+    description: str,
+    notes: dict,
+    reminder_enable: bool = False,
+    expire_by: Optional[int] = None,
+) -> dict:
+    """Boundary around ``POST /v1/payment_links`` so tests never hit the network."""
+    payload: dict = {
+        "amount": amount_paise,
+        "currency": _CURRENCY,
+        "description": description,
+        "reminder_enable": reminder_enable,
+        "notes": notes,
+    }
+    if expire_by is not None:
+        payload["expire_by"] = expire_by
+    return _razorpay_client().payment_link.create(payload)
+
+
+def _fetch_payment_on_gateway(payment_id: str) -> dict:
+    """Boundary around ``GET /v1/payments/{id}`` so tests never hit the network."""
+    return _razorpay_client().payment.fetch(payment_id)
 
 
 def _signature_is_valid(order_id: str, razorpay_payment_id: str, signature: str) -> bool:
@@ -221,6 +252,126 @@ def create_order_for_payment(db: Session, *, payment_id: str) -> dict:
     }
 
 
+@traceable(name="service.razorpay.create_payment_link_for_case", run_type="tool")
+def create_payment_link_for_case(
+    db: Session,
+    *,
+    case_id: str,
+    amount_inr: Optional[float] = None,
+    description: Optional[str] = None,
+    expire_by: Optional[int] = None,
+    notes: Optional[dict] = None,
+) -> dict:
+    """Create a real Razorpay payment link for a case (B2.1).
+
+    Enforces:
+    - reminder_enable is False by default (Principle 7).
+    - If ENABLE_NATIVE_REMINDERS is True, writes a matching Communication row to count against policy.
+    - Writes a provider_objects row (status="created", object_type="payment_link").
+    """
+    if not is_configured():
+        raise NotConfiguredError()
+
+    case = case_service.get_case_row(db, case_id)
+    if not case:
+        raise InvalidStateError(f"Case {case_id} not found", status_code=404)
+
+    payment = db.query(Payment).filter(Payment.id == case.payment_id).first() if case.payment_id else None
+    amt = amount_inr if amount_inr is not None else float(case.amount_at_risk or (payment.amount if payment else 0.0))
+
+    if amt < MIN_AMOUNT_INR:
+        raise InvalidStateError(f"Amount {amt} INR is below Razorpay minimum of ₹{MIN_AMOUNT_INR}", status_code=400)
+
+    amount_paise = int(round(amt * 100))
+    link_notes = {
+        "case_id": case.id,
+        "payment_id": payment.id if payment else "",
+        "receipt": payment.id if payment else case.id,
+    }
+    if notes:
+        link_notes.update(notes)
+
+    reminder_enable = bool(getattr(settings, "enable_native_reminders", False))
+
+    try:
+        link = _create_payment_link_on_gateway(
+            amount_paise=amount_paise,
+            description=description or f"Payment recovery for Case {case.id}",
+            notes=link_notes,
+            reminder_enable=reminder_enable,
+            expire_by=expire_by,
+        )
+    except Exception as exc:
+        raise GatewayError(str(exc))
+
+    plink_id = link.get("id", "")
+    short_url = link.get("short_url", "")
+
+    # Principle 7 & DoD: If native reminders are ever enabled, record as Communication row
+    if reminder_enable:
+        from app.models.communication import Communication
+        from app.domain.ids import generate_id
+
+        comm = Communication(
+            id=generate_id("COM", db),
+            case_id=case.id,
+            customer_id=case.customer_id,
+            channel="SMS",
+            recipient=case.customer_id,
+            content=f"Razorpay native payment link reminder enabled for {plink_id}",
+            status="SENT",
+        )
+        db.add(comm)
+        db.commit()
+
+    if plink_id:
+        from app.services import provider_object_service
+
+        provider_object_service.record_object(
+            db,
+            case_id=case.id,
+            object_type="payment_link",
+            provider_object_id=plink_id,
+            amount_paise=amount_paise,
+            status="created",
+        )
+
+    recorder.record(
+        db,
+        case.id,
+        "PAYMENT_LINK_CREATED",
+        payload={
+            "provider": "razorpay",
+            "payment_link_id": plink_id,
+            "short_url": short_url,
+            "amount_paise": amount_paise,
+            "reminder_enable": reminder_enable,
+        },
+        actor="SYSTEM",
+    )
+
+    return {
+        "case_id": case.id,
+        "payment_link_id": plink_id,
+        "short_url": short_url,
+        "amount": amt,
+        "amount_paise": amount_paise,
+        "currency": _CURRENCY,
+        "status": "created",
+    }
+
+
+@traceable(name="service.razorpay.fetch_payment", run_type="tool")
+def fetch_payment(payment_id: str) -> dict:
+    """Server-side read of payment details from Razorpay gateway (B2.1)."""
+    if not is_configured():
+        raise NotConfiguredError()
+    try:
+        return _fetch_payment_on_gateway(payment_id)
+    except Exception as exc:
+        raise GatewayError(str(exc))
+
+
 # --------------------------------------------------------------------------------------
 # 2. Verify the checkout signature, then settle through the deterministic ledger
 # --------------------------------------------------------------------------------------
@@ -267,27 +418,73 @@ def verify_and_settle(
             status_code=409,
         )
 
-    # ---- 3. Money actually moved: record it in the domain ----------------------------
+    # ---- 3. Server-side payment verification against gateway (Phase B3.1) ------------
+    pay_data = fetch_payment(razorpay_payment_id)
+    if not pay_data:
+        raise PaymentVerificationError(f"Payment {razorpay_payment_id} not found on gateway")
+
+    is_captured = pay_data.get("captured") is True or pay_data.get("status") == "captured"
+    if not is_captured:
+        raise PaymentVerificationError(
+            f"Payment {razorpay_payment_id} is not captured on gateway (status: {pay_data.get('status')})"
+        )
+
+    if pay_data.get("currency") != _CURRENCY:
+        raise PaymentVerificationError(
+            f"Payment {razorpay_payment_id} currency '{pay_data.get('currency')}' does not match expected {_CURRENCY}"
+        )
+
+    gateway_order_id = pay_data.get("order_id")
+    if gateway_order_id and gateway_order_id != order_id:
+        raise PaymentVerificationError(
+            f"Payment {razorpay_payment_id} order_id '{gateway_order_id}' does not match expected '{order_id}'"
+        )
+
+    amount_paise = pay_data.get("amount")
+    expected_paise = int(round(float(payment.amount) * 100))
+    if amount_paise is not None and int(amount_paise) < expected_paise:
+        raise PaymentVerificationError(
+            f"Payment {razorpay_payment_id} amount {amount_paise} paise is less than expected {expected_paise} paise"
+        )
+
+    case = _open_case_for_payment(db, payment_id, for_update=True)
+    if case and order_id:
+        from app.services import provider_object_service
+        order_obj = provider_object_service.get_by_provider_id(db, order_id)
+        if order_obj and order_obj.case_id and order_obj.case_id != case.id:
+            raise PaymentVerificationError(
+                f"Order {order_id} is bound to case {order_obj.case_id}, not {case.id}"
+            )
+
+    # ---- 4. Money actually moved: record it in the domain (Phase B3.2, B3.3) ---------
+    fee_paise = int(pay_data.get("fee") or 0)
+    settled_gross = float(amount_paise) / 100.0 if amount_paise is not None else float(payment.amount)
+
     payment.status = PaymentStatus.SUCCEEDED.value
     payment.error_code = None
     payment.error_message = None
 
-    case = _open_case_for_payment(db, payment_id, for_update=True)
     net_recovered = 0.0
-
     if case is not None:
         totals = intervention_service.totals(db, case.id)
         cost_total = totals["cost_total"]
         discount_total = totals["discount_total"]
-        gross = float(case.amount_at_risk or payment.amount)
+
+        expected_gross = float(case.amount_at_risk or payment.amount)
+        outcome_type = (
+            OutcomeType.RECOVERED_PARTIAL.value
+            if 0 < settled_gross < expected_gross
+            else OutcomeType.RECOVERED_FULL.value
+        )
 
         outcome = outcome_service.record_outcome(
             db,
             case_id=case.id,
-            outcome_type=OutcomeType.RECOVERED_FULL.value,
-            gross_recovered=gross,
+            outcome_type=outcome_type,
+            gross_recovered=settled_gross,
             cost_total=cost_total,
             discount_total=discount_total,
+            gateway_fee_paise=fee_paise,
             verified=True,  # signature-verified real payment, not a simulator roll
         )
         net_recovered = outcome.net_recovered
@@ -301,10 +498,12 @@ def verify_and_settle(
             case.id,
             "RECOVERED",  # same closing event type update_ledger emits for agent recoveries
             payload={
-                "outcome_type": OutcomeType.RECOVERED_FULL.value,
-                "gross_recovered": gross,
+                "outcome_type": outcome_type,
+                "gross_recovered": settled_gross,
                 "cost_total": cost_total,
                 "discount_total": discount_total,
+                "gateway_fee": float(fee_paise) / 100.0,
+                "fee_paise": fee_paise,
                 "net_recovered": net_recovered,
                 "verified_via": "razorpay_checkout_signature",
                 "razorpay_payment_id": razorpay_payment_id,
@@ -319,15 +518,16 @@ def verify_and_settle(
             payload={
                 "payment_id": payment.id,
                 "razorpay_payment_id": razorpay_payment_id,
+                "fee_paise": fee_paise,
                 "verified_via": "razorpay_checkout_signature",
             },
             actor="SYSTEM",
         )
 
-    # ---- 4. Record provider objects for instant reconciliation (A1.7) ----------------
+    # ---- 5. Record provider objects for instant reconciliation (A1.7, B3.3) -----------
     from app.services import provider_object_service
 
-    amount_paise = int(round(float(payment.amount) * 100))
+    actual_amount_paise = amount_paise if amount_paise is not None else int(round(float(payment.amount) * 100))
     if order_id:
         provider_object_service.update_status(db, provider_object_id=order_id, status="paid")
     if razorpay_payment_id:
@@ -336,8 +536,9 @@ def verify_and_settle(
             case_id=case.id if case else None,
             object_type="payment",
             provider_object_id=razorpay_payment_id,
-            amount_paise=amount_paise,
+            amount_paise=actual_amount_paise,
             status="captured",
+            fee_paise=fee_paise,
         )
 
     return {
