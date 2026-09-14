@@ -28,3 +28,22 @@ def default_auth_override(request):
         yield
     finally:
         app.dependency_overrides.pop(get_current_auth, None)
+
+
+@pytest.fixture
+def factory():
+    """A session factory bound to a fresh in-memory DB for hermetic test execution."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from app.db import Base
+    import app.models  # noqa: F401
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(bind=engine)
+    return sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
