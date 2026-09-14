@@ -1,13 +1,16 @@
 import app.observability  # Ensure observability env vars set on startup
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.config import settings
+from app.config import settings, validate_environment
 from contextlib import asynccontextmanager
-from app.api import health, simulation, events, cases, escalations, analytics, jobs, checkout, auth
+from app.api import health, simulation, events, cases, escalations, analytics, jobs, checkout, auth, webhooks
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # A5.1 & A5.2: Environment validation & test-mode guard
+    validate_environment(settings)
+
     # A3.5: Production CORS guard — refuse to boot with localhost origins in prod.
     # This prevents accidentally exposing the live API to dev browser sessions.
     if settings.app_env.lower() == "prod":
@@ -63,6 +66,7 @@ app.include_router(escalations.router)
 app.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
 app.include_router(jobs.router)
 app.include_router(checkout.router)
+app.include_router(webhooks.router)
 
 
 @app.get("/")
