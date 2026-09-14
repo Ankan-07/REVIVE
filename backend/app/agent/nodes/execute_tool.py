@@ -45,11 +45,19 @@ def execute_tool(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any
         elif case and case.case_type == CaseType.OVERDUE_INVOICE.value:
             kwargs["invoice_id"] = context.get("invoice_id")
 
-        tool = TOOL_FOR_ACTION.get(action)
+        from app.config import settings
+        from app.tools.live import LIVE_TOOL_FOR_ACTION
+
+        is_live = bool(getattr(settings, "live_recovery_enabled", False) and case and getattr(case, "origin", "lab") == "live")
+        if is_live:
+            tool = LIVE_TOOL_FOR_ACTION.get(action)
+        else:
+            tool = TOOL_FOR_ACTION.get(action)
+
         if tool is None:
             result = ToolResult(
                 tool=str(action), success=False, error_code="NO_TOOL_FOR_ACTION", retryable=False,
-                detail=f"no tool registered for action {action}",
+                detail=f"no {'live' if is_live else 'simulated'} tool registered for action {action}",
             )
         else:
             result = tool(db, **kwargs)
