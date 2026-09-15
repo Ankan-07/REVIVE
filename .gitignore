@@ -53,12 +53,16 @@ docker-compose.override.yml
 .DS_Store
 Thumbs.db
 
-# --- Generated Docs ---
+# --- Planning & Internal Docs ---
 technical_overview.md
 BUILDPLAN.md
+PRODUCTION_PLAN.md
+PRODUCT.md
+DESIGN.md
 prd.md
 hld.md
 lld.md
+skills-lock.json
 unzip.cmd
 .agent/
 .agents/
