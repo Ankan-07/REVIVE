@@ -115,8 +115,6 @@ flowchart TB
     style Redis fill:#1e293b,stroke:#fb7185
 ```
 
-*(Stored source: [`docs/diagrams/system-context.md`](docs/diagrams/system-context.md))*
-
 The browser talks to FastAPI over an httpOnly session cookie. FastAPI drives a LangGraph state machine whose durable checkpoints (Postgres) let a case pause for hours — waiting for a human or a payment webhook — and resume *exactly* where it left off, even across a redeploy.
 
 ## 💰 The money path — verified twice before the ledger moves
@@ -150,8 +148,6 @@ sequenceDiagram
     W->>DB: dispatch: failed/captured/refunded/disputed/expired
     Note over W,DB: refund reverses outcome → case REFUNDED<br/>dispute → case DISPUTED + escalation
 ```
-
-*(Stored source: [`docs/diagrams/money-path.md`](docs/diagrams/money-path.md))*
 
 ```
 Frontend callback ──► HMAC signature check ──► NECESSARY but NOT SUFFICIENT
@@ -195,8 +191,6 @@ flowchart TB
     style Lab fill:#052e16,stroke:#34d399,color:#f1f5f9
     style Ctrl fill:#0f172a,stroke:#fbbf24,color:#f1f5f9
 ```
-
-*(Stored source: [`docs/diagrams/dual-track.md`](docs/diagrams/dual-track.md))*
 
 - **🔴 LIVE** — real Razorpay test-mode integration: orders, payment links, webhooks, server-side settlement, fee-aware ledger.
 - **🔵 LAB** — the seeded deterministic simulator, kept deliberately as a quarantined eval benchmark. Baseline vs REVIVE on identical data, frozen seed-42 fixture asserted in CI.
@@ -283,8 +277,6 @@ flowchart LR
     style Host fill:#0f172a,stroke:#4f46e5,color:#f1f5f9
 ```
 
-*(Stored source: [`docs/diagrams/deployment.md`](docs/diagrams/deployment.md))*
-
 ## 🚀 Quickstart
 
 ### Prerequisites
@@ -356,31 +348,40 @@ docker compose up --build
 | ARQ worker | cron: reconcile 03:00 UTC, hourly promise/abandon/invoice scans |
 | Redis | AOF persistence; use `rediss://` + TLS in prod |
 
-Full env-var reference: [`docs/deploy.md`](docs/deploy.md) · ops procedures: [`docs/runbook.md`](docs/runbook.md)
 </details>
 
 ## 📁 Project structure
 
 ```
 revenue-rescue-engine/
-├── backend/app/
-│   ├── agent/          # LangGraph graph, 9 nodes, contracts, prompts, runner
-│   ├── api/            # 10 routers: cases, escalations, webhooks, checkout, auth, …
-│   ├── services/       # case, event, razorpay, provider_event/object, api_key, …
-│   ├── tools/          # sim tools (oracle-backed) + tools/live/ (Razorpay-backed)
-│   ├── policies/       # policy.yaml + pure evaluate() engine
-│   ├── jobs/           # ARQ worker + client
-│   ├── models/         # 20 SQLAlchemy entities
-│   └── simulation/     # LAB: seeded generator + deterministic oracle + baseline
-├── backend/tests/      # 27 hermetic test files
-├── frontend/src/       # React dashboard (pages, api clients, Razorpay checkout)
+├── .github/workflows/  # CI pipeline (lint, typecheck, hermetic tests, security scan)
+├── backend/
+│   ├── alembic/        # DB migration scripts and version history
+│   ├── app/
+│   │   ├── agent/      # LangGraph state machine, nodes, contracts, prompts, runner
+│   │   ├── api/        # REST routers: cases, escalations, webhooks, checkout, auth, …
+│   │   ├── audit/      # Immutable audit trail recording
+│   │   ├── domain/     # Domain types and ID generation utilities
+│   │   ├── jobs/       # ARQ worker & job client
+│   │   ├── models/     # SQLAlchemy ORM models
+│   │   ├── policies/   # policy.yaml + deterministic policy evaluation engine
+│   │   ├── schemas/    # Pydantic request/response schemas
+│   │   ├── services/   # Business logic (cases, events, Razorpay, rate limiter, …)
+│   │   ├── simulation/ # LAB track: seeded deterministic simulator & baseline
+│   │   └── tools/      # Recovery action tools (simulation oracle + live Razorpay)
+│   ├── scripts/        # Operational CLI scripts (API keys, schema dumps, baselines)
+│   └── tests/          # 27 hermetic test files (0 network, 0 external credentials)
 ├── docs/
-│   ├── diagrams/       # ← the diagrams used in this README (source: hld.md / lld.md)
-│   ├── deploy.md · runbook.md · observability.md
-├── nginx/nginx.conf    # SPA + security headers + /api proxy + webhook passthrough
-├── hld.md              # High-Level Design  (C4 diagrams, principles, trade-offs)
-├── lld.md              # Low-Level Design   (schemas, APIs, graph wiring, coupling)
-└── PRODUCTION_PLAN.md  # phased production roadmap (Phases 0/A/B ✅ · C–F next)
+│   └── observability.md# Distributed tracing and LangSmith setup guide
+├── frontend/
+│   └── src/            # React 19 dashboard (pages, API client, Razorpay checkout modal)
+├── nginx/
+│   └── nginx.conf      # Reverse proxy: SPA routing, CSP/HSTS headers, /api proxy
+├── Dockerfile.api      # FastAPI container specification
+├── Dockerfile.frontend # React production build container specification
+├── Dockerfile.worker   # ARQ background worker container specification
+├── docker-compose.yml  # Local multi-container orchestration (api, worker, redis, nginx)
+└── README.md           # Project architecture and developer guide
 ```
 
 ## ✅ Testing & CI
@@ -395,27 +396,6 @@ CI (`.github/workflows/ci.yml`) runs on every push/PR:
 - **Security** — Gitleaks secret scan, `VITE_*` secret audit, Dockerfile live-key scan, config-hardening tests
 
 The suite is fully hermetic: LLM nodes fall back to deterministic heuristics and all Razorpay SDK calls sit behind monkeypatchable seams — no API keys, no network.
-
-## 🗺️ Roadmap
-
-- [x] **Phase 0–B** — Supabase, API keys, containers, ARQ worker, config guards, webhook receiver, live Razorpay actions, server-verified settlement with gateway fees
-- [ ] **Phase C** — real messaging (Resend email + Twilio SMS), delivery tracking, DLT/TRAI compliance, quiet hours, PII masking at trace boundaries
-- [ ] **Phase D** — live detection for abandoned checkouts & overdue invoices from provider signals
-- [ ] **Phase E** — nightly reconciliation with the provider-object registry, escalation SLA alerts, backup/DR drills
-- [ ] **Phase F** — chaos tests (duplicate/out-of-order webhooks, concurrent resolves), full runbook, cutover flags
-
-See [`PRODUCTION_PLAN.md`](PRODUCTION_PLAN.md) for the complete phase breakdown.
-
-## 📚 Documentation
-
-| Doc | What's inside |
-|---|---|
-| [`hld.md`](hld.md) | System context, container diagrams, principles, state machine, trade-offs |
-| [`lld.md`](lld.md) | ER model, graph wiring, API contracts, webhook matrix, auth internals, coupling analysis |
-| [`prd.md`](prd.md) | Product behavior spec (§-referenced throughout the code) |
-| [`PRODUCTION_PLAN.md`](PRODUCTION_PLAN.md) | Locked decisions + phase-by-phase production roadmap |
-| [`docs/diagrams/`](docs/diagrams/) | Standalone Mermaid diagrams (this README's visuals) |
-| [`docs/deploy.md`](docs/deploy.md) · [`docs/runbook.md`](docs/runbook.md) | Deploy reference & ops procedures |
 
 ## 🤝 Contributing
 
