@@ -28,6 +28,8 @@ COPY backend/ ./
 # Copy the pre-built venv from builder
 COPY --from=builder /app/.venv /app/.venv
 
+RUN chown -R revive:revive /app
+
 # Make venv binaries available without activating
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \

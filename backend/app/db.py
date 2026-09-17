@@ -41,6 +41,9 @@ elif effective_db_url.startswith("postgresql"):
     engine_kwargs["pool_pre_ping"] = True
     engine_kwargs["pool_size"] = 10
     engine_kwargs["max_overflow"] = 20
+    # Disable psycopg prepared statements so PgBouncer / Supavisor transaction pooling works without collision
+    connect_args["prepare_threshold"] = None
+    engine_kwargs["connect_args"] = connect_args
 
 engine = create_engine(effective_db_url, **engine_kwargs)
 

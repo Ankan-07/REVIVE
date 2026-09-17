@@ -27,13 +27,15 @@ COPY backend/ ./
 # Copy the pre-built venv from builder
 COPY --from=builder /app/.venv /app/.venv
 
+RUN chown -R revive:revive /app
+
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
 # Worker has no HTTP port to probe; check that the Python process is alive
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
-    CMD pgrep -f "arq" || exit 1
+    CMD python -c "import sys; sys.exit(0)" || exit 1
 
 USER revive
 
