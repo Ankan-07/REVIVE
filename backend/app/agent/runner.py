@@ -23,6 +23,7 @@ from app.agent.state import initial_state
 from app.config import settings
 from app.db import SessionLocal
 from app.observability import configure_tracing
+from app.services import case_run_lock_service
 
 # Ample headroom over the worst-case node count; real termination is enforced by the router/policy.
 _RECURSION_LIMIT = 60
@@ -69,9 +70,18 @@ def run_agent(
     session_factory: Callable[[], Session] = SessionLocal,
     checkpointer: Optional[object] = None,
     llm_client: Any = None,
+    job_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Run the recovery graph for ``case_id`` and return the final graph state."""
     configure_tracing()
+
+    db = session_factory()
+    try:
+        acquired, reason, _ = case_run_lock_service.acquire_lock(db, case_id, job_id=job_id)
+        if not acquired:
+            return {"status": "already_running", "case_id": case_id, "reason": reason}
+    finally:
+        db.close()
 
     if checkpointer is None:
         checkpointer = _default_checkpointer()
@@ -87,7 +97,17 @@ def run_agent(
             "plan_model": settings.diagnosis_llm_model,
         },
     }
-    return graph.invoke(initial_state(case_id), config)
+
+    try:
+        result = graph.invoke(initial_state(case_id), config)
+        return result
+    finally:
+        is_terminal = bool(result.get("terminal_status")) if "result" in locals() and isinstance(result, dict) else False
+        db = session_factory()
+        try:
+            case_run_lock_service.release_lock(db, case_id, terminal=is_terminal)
+        finally:
+            db.close()
 
 
 def resume_agent(
@@ -98,9 +118,18 @@ def resume_agent(
     session_factory: Callable[[], Session] = SessionLocal,
     checkpointer: Optional[object] = None,
     llm_client: Any = None,
+    job_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Resume an escalated/paused recovery graph execution for ``case_id``."""
     configure_tracing()
+
+    db = session_factory()
+    try:
+        acquired, reason, _ = case_run_lock_service.acquire_lock(db, case_id, job_id=job_id)
+        if not acquired:
+            return {"status": "already_resumed", "case_id": case_id, "reason": reason}
+    finally:
+        db.close()
 
     if checkpointer is None:
         checkpointer = _default_checkpointer()
@@ -118,14 +147,82 @@ def resume_agent(
         },
     }
 
-    graph.update_state(
-        config,
-        {
-            "policy": {"result": resolution, "detail": f"{resolution} by human operator"},
-            "terminal_status": None,
-            "caller": caller,
-        },
-        as_node="policy_check",
-    )
+    try:
+        graph.update_state(
+            config,
+            {
+                "policy": {"result": resolution, "detail": f"{resolution} by human operator"},
+                "terminal_status": None,
+                "caller": caller,
+            },
+            as_node="policy_check",
+        )
+        result = graph.invoke(None, config)
+        return result
+    finally:
+        is_terminal = bool(result.get("terminal_status")) if "result" in locals() and isinstance(result, dict) else False
+        db = session_factory()
+        try:
+            case_run_lock_service.release_lock(db, case_id, terminal=is_terminal)
+        finally:
+            db.close()
 
-    return graph.invoke(None, config)
+
+def resume_agent_outcome(
+    case_id: str,
+    outcome_data: Dict[str, Any],
+    *,
+    caller: str = "webhook",
+    session_factory: Callable[[], Session] = SessionLocal,
+    checkpointer: Optional[object] = None,
+    llm_client: Any = None,
+    job_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Resume a parked recovery graph execution at ``outcome_pause`` with observed outcome (Phase B4)."""
+    configure_tracing()
+
+    db = session_factory()
+    try:
+        acquired, reason, _ = case_run_lock_service.acquire_lock(db, case_id, job_id=job_id)
+        if not acquired:
+            return {"status": "already_resumed", "case_id": case_id, "reason": reason}
+    finally:
+        db.close()
+
+    if checkpointer is None:
+        checkpointer = _default_checkpointer()
+
+    graph = build_graph(checkpointer)
+    config = {
+        "recursion_limit": _RECURSION_LIMIT,
+        "configurable": {
+            "thread_id": case_id,
+            "session_factory": session_factory,
+            "llm_client": llm_client,
+            "caller": caller,
+            "diagnose_model": settings.diagnosis_llm_model,
+            "plan_model": settings.diagnosis_llm_model,
+        },
+    }
+
+    try:
+        graph.update_state(
+            config,
+            {
+                "outcome": outcome_data,
+                "await_outcome": False,
+                "terminal_status": None,
+                "caller": caller,
+            },
+            as_node="outcome_pause",
+        )
+        result = graph.invoke(None, config)
+        return result
+    finally:
+        is_terminal = bool(result.get("terminal_status")) if "result" in locals() and isinstance(result, dict) else False
+        db = session_factory()
+        try:
+            case_run_lock_service.release_lock(db, case_id, terminal=is_terminal)
+        finally:
+            db.close()
+
