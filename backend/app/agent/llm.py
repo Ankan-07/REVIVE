@@ -28,6 +28,11 @@ class LLMUnavailable(RuntimeError):
     """No OpenAI key configured — caller should use its deterministic fallback."""
 
 
+class LLMUnavailableInProduction(RuntimeError):
+    """Loud 503 error when LLM is unavailable in production (Phase E2)."""
+    status_code: int = 503
+
+
 class LLMValidationError(ValueError):
     """The model never produced schema-valid JSON, even after the corrective retry."""
 
@@ -60,9 +65,11 @@ def is_llm_available() -> bool:
 def structured_complete(
     schema: Type[T],
     *,
-    system: str,
-    user: str,
-    model: str,
+    system: str = "",
+    user: str = "",
+    model: str = "gpt-4o-mini",
+    system_prompt: Optional[str] = None,
+    user_prompt: Optional[str] = None,
     client: Any = None,
     max_retries: int = 1,
 ) -> T:
@@ -72,6 +79,16 @@ def structured_complete(
     :func:`get_client`. Requests ``response_format=json_object`` and validates the content with
     Pydantic; on failure it feeds the error back to the model and tries again (PRD §31/§56).
     """
+    system = system or system_prompt or ""
+    user = user or user_prompt or ""
+
+    from app.config import settings
+    if settings.app_env.lower() == "prod" and (client is None and not is_llm_available()):
+        raise LLMUnavailableInProduction(
+            "[E2 Quarantine] LLM client is unavailable in production (APP_ENV=prod). "
+            "Silent heuristic fallbacks are strictly forbidden on the live path."
+        )
+
     client = client or get_client()
     if client is None:
         raise LLMUnavailable("OPENAI_API_KEY is not set")

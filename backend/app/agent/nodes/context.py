@@ -20,7 +20,7 @@ from app.models.communication import Communication
 from app.observability import traceable
 from app.schemas.enums import CaseStatus, CaseType
 from app.services import case_service
-from app.simulation import payment_sim
+from app.services.gateway_metric_service import load_gateway_rates
 
 # A gateway is "degraded" once its live success rate falls this far below its own baseline.
 _DEGRADATION_MARGIN = 0.05
@@ -47,7 +47,7 @@ def build_context(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, An
 
         if case.case_type == CaseType.FAILED_PAYMENT.value:
             payment = db.query(Payment).filter(Payment.id == case.payment_id).first()
-            rates = payment_sim.load_gateway_rates(db)
+            rates = load_gateway_rates(db)
 
             current_gateway = payment.gateway if payment else None
             current_rate = rates.get(current_gateway) if current_gateway else None

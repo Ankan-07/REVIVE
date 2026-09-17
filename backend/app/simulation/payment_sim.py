@@ -63,12 +63,7 @@ def gateway_health_for(
     return gateway_rates.get(current_gateway, 0.0), current_gateway
 
 
-def load_gateway_rates(db: Session) -> Dict[str, float]:
-    """Latest success_rate per gateway (most recent metric wins if a gateway has several)."""
-    rates: Dict[str, float] = {}
-    for m in db.query(GatewayMetric).order_by(GatewayMetric.recorded_at).all():
-        rates[m.gateway_name] = m.success_rate
-    return rates
+from app.services.gateway_metric_service import load_gateway_rates
 
 
 @traceable(name="sim.simulate_payment", run_type="tool")
