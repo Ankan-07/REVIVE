@@ -24,6 +24,7 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 from pathlib import Path
+import re
 
 from dotenv import load_dotenv
 from langsmith import traceable  # re-exported for convenient `from app.observability import traceable`
@@ -35,6 +36,7 @@ __all__ = [
     "is_tracing_enabled",
     "tracing_project",
     "DEFAULT_PROJECT",
+    "mask_pii",
 ]
 
 # backend/app/observability.py -> parents[0]=app, [1]=backend, [2]=repo root
@@ -115,3 +117,20 @@ def traced_openai_client():
     from openai import OpenAI
 
     return wrap_openai(OpenAI())
+
+
+def mask_pii(text: str) -> str:
+    """Mask email addresses and phone numbers in text before trace/log emission (Phase C3)."""
+    if not text or not isinstance(text, str):
+        return text
+
+    # Mask email: user part masked as u***@domain.com
+    email_pattern = r"\b([A-Za-z0-9._%+-])[A-Za-z0-9._%+-]*@([A-Za-z0-9.-]+\.[A-Za-z]{2,})\b"
+    masked = re.sub(email_pattern, r"\1***@\2", text)
+
+    # Mask phone: digits masked as +91*****3210
+    phone_pattern = r"(\+?\d{2,3})?\s*(\d{2})\d{4,6}(\d{4})"
+    masked = re.sub(phone_pattern, r"\1*****\3", masked)
+
+    return masked
+

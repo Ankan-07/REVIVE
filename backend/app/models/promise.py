@@ -12,3 +12,12 @@ class PromiseToPay(Base):
     promised_date = Column(DateTime, nullable=False)
     status = Column(String, nullable=False, default="PENDING")  # PromiseStatus enum
     created_at = Column(DateTime, default=utc_now)
+
+    @property
+    def promise_date(self):
+        return self.promised_date
+
+    @promise_date.setter
+    def promise_date(self, val):
+        self.promised_date = val
+
