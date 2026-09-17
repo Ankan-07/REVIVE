@@ -160,8 +160,24 @@ def test_f3_selective_live_actions_gating(db, monkeypatch):
 def test_f1_end_to_end_payment_link_recovery_flow(db, monkeypatch):
     """F1: Complete flow: payment.failed -> link create -> comms send -> payment_link.paid -> settle."""
     from app.config import settings
+    from app.services import razorpay_service
+
     monkeypatch.setattr(settings, "live_recovery_enabled", True)
     monkeypatch.setattr(settings, "live_actions", "retry,payment_link,checkout_collect,reminders")
+
+    def _fake_create_link(amount_paise, description, notes, reminder_enable=False, expire_by=None):
+        return {
+            "id": f"plink_mock_{notes.get('case_id')}",
+            "entity": "payment_link",
+            "amount": amount_paise,
+            "currency": "INR",
+            "short_url": "https://rzp.io/i/mockLink123",
+            "status": "created",
+            "reminder_enable": reminder_enable,
+            "notes": notes,
+        }
+
+    monkeypatch.setattr(razorpay_service, "_create_payment_link_on_gateway", _fake_create_link)
 
     case, customer = _seed_live_customer_and_case(db, amount=3000.0)
 
