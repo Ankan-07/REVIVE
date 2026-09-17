@@ -98,11 +98,12 @@ def run_agent(
         },
     }
 
+    result: Dict[str, Any] = {}
     try:
         result = graph.invoke(initial_state(case_id), config)
         return result
     finally:
-        is_terminal = bool(result.get("terminal_status")) if "result" in locals() and isinstance(result, dict) else False
+        is_terminal = bool(result.get("terminal_status"))
         db = session_factory()
         try:
             case_run_lock_service.release_lock(db, case_id, terminal=is_terminal)
@@ -147,6 +148,7 @@ def resume_agent(
         },
     }
 
+    result: Dict[str, Any] = {}
     try:
         graph.update_state(
             config,
@@ -160,7 +162,7 @@ def resume_agent(
         result = graph.invoke(None, config)
         return result
     finally:
-        is_terminal = bool(result.get("terminal_status")) if "result" in locals() and isinstance(result, dict) else False
+        is_terminal = bool(result.get("terminal_status"))
         db = session_factory()
         try:
             case_run_lock_service.release_lock(db, case_id, terminal=is_terminal)
@@ -205,6 +207,7 @@ def resume_agent_outcome(
         },
     }
 
+    result: Dict[str, Any] = {}
     try:
         graph.update_state(
             config,
@@ -219,7 +222,7 @@ def resume_agent_outcome(
         result = graph.invoke(None, config)
         return result
     finally:
-        is_terminal = bool(result.get("terminal_status")) if "result" in locals() and isinstance(result, dict) else False
+        is_terminal = bool(result.get("terminal_status"))
         db = session_factory()
         try:
             case_run_lock_service.release_lock(db, case_id, terminal=is_terminal)

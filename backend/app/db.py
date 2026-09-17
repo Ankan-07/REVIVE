@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from typing import Any, Generator
+from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from app.config import settings
@@ -9,7 +10,6 @@ def utc_now() -> datetime:
     """Return timezone-aware current UTC datetime."""
     return datetime.now(timezone.utc)
 
-from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 
 def normalize_db_url(raw_url: str) -> str:
     """Ensure PostgreSQL connection strings use the psycopg v3 driver prefix and strip invalid libpq options."""

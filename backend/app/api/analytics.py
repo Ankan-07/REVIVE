@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.auth import require_api_key
 from app.db import get_db
 from app.schemas.analytics import RecoveryTotalsResponse, InterventionStatsResponse, BaselineComparisonResponse
-from app.services import analytics_service
+from app.services import analytics_service, reconciliation_service
 
 router = APIRouter(dependencies=[Depends(require_api_key("operator"))])
 
@@ -63,5 +63,4 @@ def get_baseline_comparison(
 @router.get("/reconciliation")
 def get_reconciliation_report(db: Session = Depends(get_db)):
     """Get the latest nightly reconciliation report and current aging escalations (Phase E1)."""
-    from app.services import reconciliation_service
     return reconciliation_service.get_latest_reconciliation_report(db)

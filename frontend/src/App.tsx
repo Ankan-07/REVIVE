@@ -82,8 +82,6 @@ function HealthPage() {
   );
 }
 
-const DEV_API_KEY = "rve_f310e2f4_rhxJTY51fGUDifUwb3WVEPPFMy4l3NCcx6rDYdyhkcE";
-
 function Layout() {
   const [user, setUser] = useState<UserProfileResponse | null>(null);
   const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
@@ -233,13 +231,6 @@ function Layout() {
             </div>
 
             <div className="flex gap-2 pt-2">
-              <button
-                disabled={authLoading}
-                onClick={() => handleLogin(DEV_API_KEY)}
-                className="flex-1 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition"
-              >
-                Use Dev Key
-              </button>
               <button
                 disabled={authLoading || !apiKeyInput.trim()}
                 onClick={() => handleLogin(apiKeyInput)}
