@@ -145,6 +145,24 @@ def _fetch_payment_on_gateway(payment_id: str) -> dict:
     return _razorpay_client().payment.fetch(payment_id)
 
 
+def _fetch_order_on_gateway(order_id: str) -> dict:
+    """Boundary around ``GET /v1/orders/{id}`` so tests never hit the network."""
+    return _razorpay_client().order.fetch(order_id)
+
+
+def _fetch_payment_link_on_gateway(link_id: str) -> dict:
+    """Boundary around ``GET /v1/payment_links/{id}`` so tests never hit the network."""
+    return _razorpay_client().payment_link.fetch(link_id)
+
+
+def _list_invoices_on_gateway(status: Optional[str] = None, count: int = 10, skip: int = 0) -> dict:
+    """Boundary around ``GET /v1/invoices`` so tests never hit the network."""
+    data = {"count": count, "skip": skip}
+    if status:
+        data["status"] = status
+    return _razorpay_client().invoice.all(data)
+
+
 def _signature_is_valid(order_id: str, razorpay_payment_id: str, signature: str) -> bool:
     """HMAC-SHA256(order_id + '|' + payment_id, key_secret) — the Razorpay doc algorithm."""
     secret = _key_secret()
@@ -368,6 +386,39 @@ def fetch_payment(payment_id: str) -> dict:
         raise NotConfiguredError()
     try:
         return _fetch_payment_on_gateway(payment_id)
+    except Exception as exc:
+        raise GatewayError(str(exc))
+
+
+@traceable(name="service.razorpay.fetch_order", run_type="tool")
+def fetch_order(order_id: str) -> dict:
+    """Server-side read of order details from Razorpay gateway (Phase D1)."""
+    if not is_configured():
+        raise NotConfiguredError()
+    try:
+        return _fetch_order_on_gateway(order_id)
+    except Exception as exc:
+        raise GatewayError(str(exc))
+
+
+@traceable(name="service.razorpay.fetch_payment_link", run_type="tool")
+def fetch_payment_link(link_id: str) -> dict:
+    """Server-side read of payment link details from Razorpay gateway (Phase D2)."""
+    if not is_configured():
+        raise NotConfiguredError()
+    try:
+        return _fetch_payment_link_on_gateway(link_id)
+    except Exception as exc:
+        raise GatewayError(str(exc))
+
+
+@traceable(name="service.razorpay.list_invoices", run_type="tool")
+def list_invoices(status: Optional[str] = None, count: int = 10, skip: int = 0) -> dict:
+    """Server-side list of invoices from Razorpay gateway (Phase D3)."""
+    if not is_configured():
+        raise NotConfiguredError()
+    try:
+        return _list_invoices_on_gateway(status=status, count=count, skip=skip)
     except Exception as exc:
         raise GatewayError(str(exc))
 

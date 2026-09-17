@@ -170,6 +170,21 @@ def process_provider_event(db: Session, event_id: str) -> Dict[str, Any]:
         notes = payment_entity.get("notes") or {}
         case_id = notes.get("case_id")
 
+        # Phase D1 Verified Ingest: re-fetch authoritative amount from gateway order/payment
+        try:
+            from app.services import razorpay_service
+            if razorpay_service.is_configured():
+                if order_id:
+                    order_data = razorpay_service.fetch_order(order_id)
+                    if order_data and "amount" in order_data:
+                        amount_paise = order_data["amount"]
+                elif payment_id:
+                    pay_data = razorpay_service.fetch_payment(payment_id)
+                    if pay_data and "amount" in pay_data:
+                        amount_paise = pay_data["amount"]
+        except Exception as exc:
+            logger.debug(f"Could not re-fetch authoritative amount for payment {payment_id}: {exc}")
+
         if payment_id:
             provider_object_service.record_object(
                 db,
@@ -468,6 +483,65 @@ def process_provider_event(db: Session, event_id: str) -> Dict[str, Any]:
             if pobj and pobj.case_id:
                 case = case_service.get_case_row(db, pobj.case_id)
 
+        if not case and link_id:
+            # Phase D2: Uncased payment_link.expired -> Ingest new ABANDONED_CHECKOUT case (origin="live")
+            amount_paise = link_entity.get("amount", 0)
+            amount_inr = float(amount_paise) / 100.0 if amount_paise else 0.0
+            cust_data = link_entity.get("customer") or {}
+            cust_email = cust_data.get("email") or "shopper@example.com"
+            cust_phone = cust_data.get("contact") or "+919999999999"
+            cust_name = cust_data.get("name") or "Abandoned Shopper"
+
+            cust = db.query(Customer).filter(Customer.email == cust_email).first()
+            if not cust:
+                cust = Customer(
+                    id=generate_id("CUS", db),
+                    name=cust_name,
+                    email=cust_email,
+                    phone=cust_phone,
+                    origin="live",
+                    risk_score=0.5,
+                )
+                db.add(cust)
+                db.flush()
+
+            case = RevenueRiskCase(
+                id=generate_id("RR", db),
+                customer_id=cust.id,
+                payment_id=None,
+                case_type=CaseType.ABANDONED_CHECKOUT.value,
+                origin="live",
+                status=CaseStatus.DETECTED.value,
+                amount_at_risk=amount_inr,
+                priority="HIGH" if amount_inr > 5000 else "MEDIUM",
+                risk_score=0.5,
+            )
+            db.add(case)
+            db.flush()
+
+            pobj = provider_object_service.get_by_provider_id(db, link_id)
+            if not pobj:
+                pobj = provider_object_service.record_object(
+                    db,
+                    case_id=case.id,
+                    object_type="payment_link",
+                    provider_object_id=link_id,
+                    amount_paise=amount_paise,
+                    status="expired",
+                )
+            else:
+                pobj.case_id = case.id
+                pobj.status = "expired"
+                db.flush()
+
+            recorder.record(
+                db,
+                case.id,
+                "ABANDONED_CHECKOUT_INGESTED",
+                payload={"payment_link_id": link_id, "amount": amount_inr, "status": "expired"},
+                actor="SYSTEM",
+            )
+
         recorder.record(
             db,
             case.id if case else None,
@@ -508,6 +582,64 @@ def process_provider_event(db: Session, event_id: str) -> Dict[str, Any]:
             pobj = provider_object_service.get_by_provider_id(db, inv_id)
             if pobj and pobj.case_id:
                 case = case_service.get_case_row(db, pobj.case_id)
+
+        if not case and inv_id:
+            # Phase D3: Uncased invoice.expired -> Ingest new OVERDUE_INVOICE case (origin="live")
+            amount_paise = inv_entity.get("amount", 0)
+            amount_inr = float(amount_paise) / 100.0 if amount_paise else 0.0
+            cust_email = inv_entity.get("customer_email") or "invoice_client@example.com"
+            cust_phone = inv_entity.get("customer_contact") or "+919999999999"
+            cust_name = inv_entity.get("customer_name") or "Invoice Client"
+
+            cust = db.query(Customer).filter(Customer.email == cust_email).first()
+            if not cust:
+                cust = Customer(
+                    id=generate_id("CUS", db),
+                    name=cust_name,
+                    email=cust_email,
+                    phone=cust_phone,
+                    origin="live",
+                    risk_score=0.5,
+                )
+                db.add(cust)
+                db.flush()
+
+            case = RevenueRiskCase(
+                id=generate_id("RR", db),
+                customer_id=cust.id,
+                payment_id=None,
+                case_type=CaseType.OVERDUE_INVOICE.value,
+                origin="live",
+                status=CaseStatus.DETECTED.value,
+                amount_at_risk=amount_inr,
+                priority="HIGH" if amount_inr > 5000 else "MEDIUM",
+                risk_score=0.5,
+            )
+            db.add(case)
+            db.flush()
+
+            pobj = provider_object_service.get_by_provider_id(db, inv_id)
+            if not pobj:
+                pobj = provider_object_service.record_object(
+                    db,
+                    case_id=case.id,
+                    object_type="invoice",
+                    provider_object_id=inv_id,
+                    amount_paise=amount_paise,
+                    status="expired",
+                )
+            else:
+                pobj.case_id = case.id
+                pobj.status = "expired"
+                db.flush()
+
+            recorder.record(
+                db,
+                case.id,
+                "OVERDUE_INVOICE_INGESTED",
+                payload={"invoice_id": inv_id, "amount": amount_inr, "status": "expired"},
+                actor="SYSTEM",
+            )
 
         recorder.record(
             db,
