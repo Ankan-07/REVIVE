@@ -29,6 +29,7 @@ class AgentState(TypedDict, total=False):
     rejected_actions: List[str]        # actions ruled out by policy or already tried-and-failed
     tool_result: Optional[Dict[str, Any]]  # result of the executed tool (incl. intervention_id)
     outcome: Optional[Dict[str, Any]]  # verified outcome read back from the DB by observe_outcome
+    await_outcome: Optional[bool]      # whether the graph is parked waiting for an async provider event (Phase B4)
     iterations: int                    # loop counter — hard backstop against non-termination (§21)
     terminal_status: Optional[str]     # set by the node that decides the run is over; read by update_ledger
 
@@ -49,6 +50,7 @@ def initial_state(case_id: str) -> AgentState:
         "rejected_actions": [],
         "tool_result": None,
         "outcome": None,
+        "await_outcome": False,
         "iterations": 0,
         "terminal_status": None,
     }

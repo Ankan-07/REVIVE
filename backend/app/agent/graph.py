@@ -39,6 +39,13 @@ def escalation_pause(state: AgentState) -> Dict[str, Any]:
     return {}
 
 
+def outcome_pause(state: AgentState) -> Dict[str, Any]:
+    """A dummy node acting as a checkpointer boundary for async outcomes (Phase B4).
+    Execution halts *before* entering this node, allowing an incoming webhook or
+    timeout worker to resume."""
+    return {}
+
+
 @traceable(name="route.after_score", run_type="chain")
 def route_after_score(state: AgentState) -> str:
     """An eligible action was chosen -> check policy; otherwise the run is terminal."""
@@ -54,6 +61,14 @@ def route_after_policy(state: AgentState) -> str:
     if result == policy_engine.ESCALATE:
         return "escalate"
     return "rescore"  # REJECTED (or anything unexpected) -> try the next best action
+
+
+@traceable(name="route.after_execute", run_type="chain")
+def route_after_execute(state: AgentState) -> str:
+    """Branch on whether the executed action requires parking for an async outcome (Phase B4)."""
+    if state.get("await_outcome"):
+        return "wait"
+    return "observe"
 
 
 @traceable(name="route.after_router", run_type="chain")
@@ -78,6 +93,7 @@ def build_graph(checkpointer: Optional[object] = None):
     graph.add_node("policy_check", policy_check)
     graph.add_node("escalation_pause", escalation_pause)
     graph.add_node("execute_tool", execute_tool)
+    graph.add_node("outcome_pause", outcome_pause)
     graph.add_node("observe_outcome", observe_outcome)
     graph.add_node("router", router)
     graph.add_node("update_ledger", update_ledger)
@@ -101,7 +117,12 @@ def build_graph(checkpointer: Optional[object] = None):
     # When a human operator approves/rejects, they resume as_node="policy_check", skipping this edge.
     graph.add_edge("escalation_pause", "update_ledger")
     
-    graph.add_edge("execute_tool", "observe_outcome")
+    graph.add_conditional_edges(
+        "execute_tool",
+        route_after_execute,
+        {"wait": "outcome_pause", "observe": "observe_outcome"},
+    )
+    graph.add_edge("outcome_pause", "observe_outcome")
     graph.add_edge("observe_outcome", "router")
     graph.add_conditional_edges(
         "router",
@@ -110,4 +131,5 @@ def build_graph(checkpointer: Optional[object] = None):
     )
     graph.add_edge("update_ledger", END)
 
-    return graph.compile(checkpointer=checkpointer, interrupt_before=["escalation_pause"])
+    return graph.compile(checkpointer=checkpointer, interrupt_before=["escalation_pause", "outcome_pause"])
+
