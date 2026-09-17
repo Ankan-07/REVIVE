@@ -64,7 +64,6 @@ def execute_tool(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any
 
         # Count the attempt regardless of success (it draws down the retry budget, PRD §16).
         new_attempt = case_service.increment_attempt(db, case_id)
-        case_service.set_status(db, case_id, CaseStatus.ACTION_EXECUTING.value)
 
         result_payload = result.model_dump(mode="json")
         recorder.record(
@@ -81,4 +80,18 @@ def execute_tool(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any
             reasoning=result.detail,
         )
 
-    return {"tool_result": result_payload, "attempt": new_attempt}
+        await_outcome = False
+        if is_live and result.success:
+            await_outcome = True
+            case_service.set_status(db, case_id, CaseStatus.WAITING_FOR_OUTCOME.value)
+            recorder.record(
+                db,
+                case_id,
+                "WAITING_FOR_OUTCOME",
+                payload={"action": action, "attempt": attempt_number, "tool_result": result_payload},
+            )
+        else:
+            case_service.set_status(db, case_id, CaseStatus.ACTION_EXECUTING.value)
+
+    return {"tool_result": result_payload, "attempt": new_attempt, "await_outcome": await_outcome}
+
