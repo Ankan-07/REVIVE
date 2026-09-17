@@ -57,6 +57,10 @@ def assign_escalation(db: Session, escalation_id: str, owner_id: str) -> Optiona
         db.refresh(esc)
     return esc
 
+import threading
+
+_escalation_lock = threading.Lock()
+
 def resolve_escalation(
     db: Session, 
     escalation_id: str, 
@@ -64,16 +68,17 @@ def resolve_escalation(
     notes: Optional[str] = None
 ) -> tuple[Optional[Escalation], bool]:
     """Resolve an escalation and return a boolean indicating if a state transition occurred."""
-    esc = get_escalation(db, escalation_id)
-    transitioned = False
-    if esc and esc.status == "OPEN":
-        esc.status = resolution_status
-        if notes:
-            existing_notes = esc.notes or ""
-            sep = "\n\n" if existing_notes else ""
-            esc.notes = f"{existing_notes}{sep}Resolution: {notes}"
-        esc.resolved_at = datetime.now(timezone.utc)
-        db.commit()
-        db.refresh(esc)
-        transitioned = True
-    return esc, transitioned
+    with _escalation_lock:
+        esc = get_escalation(db, escalation_id, for_update=True)
+        transitioned = False
+        if esc and esc.status == "OPEN":
+            esc.status = resolution_status
+            if notes:
+                existing_notes = esc.notes or ""
+                sep = "\n\n" if existing_notes else ""
+                esc.notes = f"{existing_notes}{sep}Resolution: {notes}"
+            esc.resolved_at = datetime.now(timezone.utc)
+            db.commit()
+            db.refresh(esc)
+            transitioned = True
+        return esc, transitioned
