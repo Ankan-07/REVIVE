@@ -283,6 +283,7 @@ def process_provider_event(db: Session, event_id: str) -> Dict[str, Any]:
             )
 
         if case:
+            case_was_waiting = (case.status == CaseStatus.WAITING_FOR_OUTCOME.value)
             gross = float(amount_paise) / 100.0 if amount_paise else float(case.amount_at_risk or 0.0)
             totals = intervention_service.totals(db, case.id)
             cost_total = totals["cost_total"]
@@ -328,6 +329,28 @@ def process_provider_event(db: Session, event_id: str) -> Dict[str, Any]:
                 },
                 actor="SYSTEM",
             )
+
+            # Phase B4.2: If case was parked at outcome_pause, resume the agent run
+            if case.status == CaseStatus.RECOVERED.value or case_was_waiting:
+                try:
+                    from app.agent.runner import resume_agent_outcome
+                    from sqlalchemy.orm import sessionmaker
+                    db_factory = sessionmaker(bind=db.get_bind(), autocommit=False, autoflush=False)
+                    resume_agent_outcome(
+                        case.id,
+                        {
+                            "recovered": True,
+                            "gross_recovered": gross,
+                            "net_recovered": outcome.net_recovered,
+                            "gateway_fee_paise": fee_paise,
+                            "verified_via": "razorpay_webhook",
+                        },
+                        session_factory=db_factory,
+                        caller="webhook",
+                    )
+                except Exception as exc:
+                    logger.warning(f"Could not resume LangGraph agent for case {case.id}: {exc}")
+
         result["case_id"] = case.id if case else None
 
     # ----------------------------------------------------------------------------------
@@ -452,6 +475,25 @@ def process_provider_event(db: Session, event_id: str) -> Dict[str, Any]:
             payload={"payment_link_id": link_id},
             actor="SYSTEM",
         )
+        if case and case.status == CaseStatus.WAITING_FOR_OUTCOME.value:
+            try:
+                from app.agent.runner import resume_agent_outcome
+                from sqlalchemy.orm import sessionmaker
+                db_factory = sessionmaker(bind=db.get_bind(), autocommit=False, autoflush=False)
+                resume_agent_outcome(
+                    case.id,
+                    {
+                        "recovered": False,
+                        "expired": True,
+                        "reason": "expired",
+                        "verified_via": "razorpay_webhook_expired",
+                    },
+                    session_factory=db_factory,
+                    caller="webhook",
+                )
+            except Exception as exc:
+                logger.warning(f"Could not resume LangGraph agent for expired case {case.id}: {exc}")
+
         result["case_id"] = case.id if case else None
 
     # ----------------------------------------------------------------------------------
@@ -474,9 +516,29 @@ def process_provider_event(db: Session, event_id: str) -> Dict[str, Any]:
             payload={"invoice_id": inv_id},
             actor="SYSTEM",
         )
+        if case and case.status == CaseStatus.WAITING_FOR_OUTCOME.value:
+            try:
+                from app.agent.runner import resume_agent_outcome
+                from sqlalchemy.orm import sessionmaker
+                db_factory = sessionmaker(bind=db.get_bind(), autocommit=False, autoflush=False)
+                resume_agent_outcome(
+                    case.id,
+                    {
+                        "recovered": False,
+                        "expired": True,
+                        "reason": "expired",
+                        "verified_via": "razorpay_webhook_expired",
+                    },
+                    session_factory=db_factory,
+                    caller="webhook",
+                )
+            except Exception as exc:
+                logger.warning(f"Could not resume LangGraph agent for expired case {case.id}: {exc}")
+
         result["case_id"] = case.id if case else None
 
     event.processed = True
     db.commit()
     db.refresh(event)
     return result
+
