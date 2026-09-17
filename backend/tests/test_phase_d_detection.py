@@ -18,7 +18,6 @@ Covers:
 """
 import hashlib
 import hmac
-import json
 import pytest
 from fastapi.testclient import TestClient
 
@@ -26,11 +25,8 @@ from app.config import settings
 from app.db import get_db
 from app.main import app as fastapi_app
 from app.models.case import RevenueRiskCase
-from app.models.customer import Customer
-from app.models.provider_event import ProviderEvent
-from app.models.provider_object import ProviderObject
 from app.schemas.enums import CaseStatus, CaseType
-from app.services import provider_event_service, provider_object_service, razorpay_service
+from app.services import provider_event_service, provider_object_service
 from app.services.detection_service import scan_abandoned_checkouts, scan_overdue_invoices
 
 WEBHOOK_SECRET = "phase_d_test_secret_xyz"
@@ -217,12 +213,12 @@ def test_d2_payment_link_expired_creates_abandoned_checkout_case(db):
 def test_d2_scan_abandoned_checkouts_creates_cases_for_unpaid_links(db, monkeypatch):
     """D2: scan_abandoned_checkouts detects unpaid payment links past abandon_after_hours threshold."""
     # Pre-populate an active unpaid payment link in provider_objects without a case
-    pobj = provider_object_service.record_object(
+    provider_object_service.record_object(
         db,
         case_id=None,
-        object_type="payment_link",
-        provider_object_id="plink_unpaid_old",
-        amount_paise=150000,  # ₹1500.00
+        object_type="link",
+        provider_object_id="plink_abandoned_001",
+        amount_paise=150000,
         status="created",
     )
 

@@ -8,7 +8,7 @@ Covers:
 - E1.5: Aging escalation SLA alert scanner (finds unassigned escalations past sla_due_at)
 - E1.6: Reconciliation Dashboard Endpoint (GET /analytics/reconciliation returns report)
 """
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 import pytest
 from fastapi.testclient import TestClient
 
@@ -19,10 +19,7 @@ from app.main import app as fastapi_app
 from app.models.case import RevenueRiskCase
 from app.models.customer import Customer
 from app.models.escalation import Escalation
-from app.models.outcome import RecoveryOutcome
-from app.models.payment import Payment
-from app.models.provider_object import ProviderObject
-from app.schemas.enums import CaseStatus, CaseType, EscalationReason, OutcomeType, PaymentStatus
+from app.schemas.enums import CaseStatus, CaseType, EscalationReason, OutcomeType
 from app.services import (
     escalation_service,
     outcome_service,

@@ -53,7 +53,7 @@ def test_generator_gateways_razorpay_only(db_session):
 
 def test_timeout_failures_are_method_level(db_session):
     """E3: Timeouts represent method-level / bank downtime on Razorpay with degraded method_health."""
-    res = run_simulation(db_session, seed=42, customer_count=50, payment_count=500)
+    run_simulation(db_session, seed=42, customer_count=50, payment_count=500)
 
     timeouts = db_session.query(Payment).filter(Payment.error_code == "timeout").all()
     assert len(timeouts) > 0, "Expected timeout failures to be generated"

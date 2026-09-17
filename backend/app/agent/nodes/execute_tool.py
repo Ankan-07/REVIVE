@@ -45,22 +45,45 @@ def execute_tool(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any
         elif case and case.case_type == CaseType.OVERDUE_INVOICE.value:
             kwargs["invoice_id"] = context.get("invoice_id")
 
-        from app.config import settings
+        from app.config import is_live_action_enabled, settings
         from app.tools.live import LIVE_TOOL_FOR_ACTION
 
-        is_live = bool(getattr(settings, "live_recovery_enabled", False) and case and getattr(case, "origin", "lab") == "live")
+        is_live = bool(case and getattr(case, "origin", "lab") == "live")
         if is_live:
-            tool = LIVE_TOOL_FOR_ACTION.get(action)
+            if not getattr(settings, "live_recovery_enabled", False):
+                result = ToolResult(
+                    tool=str(action),
+                    success=False,
+                    error_code="LIVE_RECOVERY_DISABLED",
+                    retryable=False,
+                    detail="Live recovery is disabled via LIVE_RECOVERY_ENABLED=False",
+                )
+            elif not is_live_action_enabled(str(action)):
+                result = ToolResult(
+                    tool=str(action),
+                    success=False,
+                    error_code="ACTION_DISABLED_BY_POLICY",
+                    retryable=False,
+                    detail=f"Live action '{action}' is disabled by LIVE_ACTIONS policy",
+                )
+            else:
+                tool = LIVE_TOOL_FOR_ACTION.get(action)
+                if tool is None:
+                    result = ToolResult(
+                        tool=str(action), success=False, error_code="NO_TOOL_FOR_ACTION", retryable=False,
+                        detail=f"no live tool registered for action {action}",
+                    )
+                else:
+                    result = tool(db, **kwargs)
         else:
             tool = TOOL_FOR_ACTION.get(action)
-
-        if tool is None:
-            result = ToolResult(
-                tool=str(action), success=False, error_code="NO_TOOL_FOR_ACTION", retryable=False,
-                detail=f"no {'live' if is_live else 'simulated'} tool registered for action {action}",
-            )
-        else:
-            result = tool(db, **kwargs)
+            if tool is None:
+                result = ToolResult(
+                    tool=str(action), success=False, error_code="NO_TOOL_FOR_ACTION", retryable=False,
+                    detail=f"no simulated tool registered for action {action}",
+                )
+            else:
+                result = tool(db, **kwargs)
 
         # Count the attempt regardless of success (it draws down the retry budget, PRD §16).
         new_attempt = case_service.increment_attempt(db, case_id)

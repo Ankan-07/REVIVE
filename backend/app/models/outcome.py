@@ -20,3 +20,7 @@ class RecoveryOutcome(Base):
     def gateway_fee(self) -> float:
         """Returns the gateway fee converted from paise to INR float."""
         return float(self.gateway_fee_paise or 0) / 100.0
+
+    @gateway_fee.setter
+    def gateway_fee(self, value: float) -> None:
+        self.gateway_fee_paise = int(round((value or 0.0) * 100))

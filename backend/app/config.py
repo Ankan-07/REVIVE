@@ -37,11 +37,12 @@ class Settings(BaseSettings):
     session_secret_key: str = "revive-insecure-dev-secret-key-change-in-production"
     session_ttl_seconds: int = 28800  # 8 hours
 
-    # Payments / Razorpay (Phase A5 / B1 / B2)
+    # Payments / Razorpay (Phase A5 / B1 / B2 / F3)
     razorpay_key_id: str = ""
     razorpay_key_secret: str = ""
     razorpay_webhook_secret: str = ""
     live_recovery_enabled: bool = True
+    live_actions: str = "retry,payment_link,checkout_collect,reminders"
     enable_native_reminders: bool = False
 
     # Messaging / Email - Resend (Phase A5 / C1)
@@ -79,6 +80,27 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+_ACTION_FLAG_MAP: dict[str, str] = {
+    "retry_payment": "retry",
+    "create_payment_link": "payment_link",
+    "collect_via_checkout": "checkout_collect",
+    "send_reminder": "reminders",
+    "send_discount_message": "reminders",
+    "offer_payment_plan": "reminders",
+}
+
+
+def is_live_action_enabled(action_name: str, cfg: Settings | None = None) -> bool:
+    """Check if a specific live action is permitted by the LIVE_ACTIONS configuration."""
+    conf = cfg or settings
+    if not conf.live_recovery_enabled:
+        return False
+    raw = conf.live_actions or ""
+    allowed = {item.strip().lower() for item in raw.split(",") if item.strip()}
+    flag = _ACTION_FLAG_MAP.get(action_name.lower(), action_name.lower())
+    return flag in allowed or action_name.lower() in allowed
 
 
 def validate_environment(cfg: Settings) -> None:

@@ -19,11 +19,8 @@ Covers:
 import ast
 from pathlib import Path
 import pytest
-from fastapi.testclient import TestClient
 
 from app.config import settings
-from app.db import get_db
-from app.main import app as fastapi_app
 from app.services import analytics_service
 
 

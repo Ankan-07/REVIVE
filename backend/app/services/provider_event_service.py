@@ -386,6 +386,8 @@ def process_provider_event(db: Session, event_id: str) -> Dict[str, Any]:
                 case = case_service.get_case_row(db, pobj.case_id)
             if not case:
                 case = db.query(RevenueRiskCase).filter(RevenueRiskCase.payment_id == payment_id).first()
+        if not case and payment_entity.get("notes", {}).get("case_id"):
+            case = case_service.get_case_row(db, payment_entity["notes"]["case_id"])
 
         if case:
             # 1. Reverse recovery outcome
@@ -446,6 +448,10 @@ def process_provider_event(db: Session, event_id: str) -> Dict[str, Any]:
                 case = case_service.get_case_row(db, pobj.case_id)
             if not case:
                 case = db.query(RevenueRiskCase).filter(RevenueRiskCase.payment_id == payment_id).first()
+        if not case and payment_entity.get("notes", {}).get("case_id"):
+            case = case_service.get_case_row(db, payment_entity["notes"]["case_id"])
+        if not case and dispute_entity.get("notes", {}).get("case_id"):
+            case = case_service.get_case_row(db, dispute_entity["notes"]["case_id"])
 
         if case:
             case_service.set_status(db, case.id, CaseStatus.DISPUTED.value)

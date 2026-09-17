@@ -6,7 +6,6 @@ Enforces:
 3. razorpay_service.is_configured() returns True with either real or fallback keys.
 """
 import os
-import pytest
 from app.config import settings, validate_environment, Settings
 from app.services import razorpay_service
 
