@@ -103,18 +103,22 @@ async def verify_promises_job(ctx: Dict[str, Any], job_id: Optional[str] = None)
 
 
 async def abandonment_scan_job(ctx: Dict[str, Any], job_id: Optional[str] = None) -> Dict[str, Any]:
-    """Scan for abandoned checkout sessions and expired payment links (Phase D2/A4 stub)."""
+    """Scan for abandoned checkout sessions and expired payment links (Phase D2)."""
+    from app.services.detection_service import scan_abandoned_checkouts
+
     session_factory = ctx.get("session_factory", SessionLocal)
     db = session_factory()
     try:
         if job_id:
             job_service.mark_running(db, job_id)
 
+        case_ids = scan_abandoned_checkouts(db)
         result = {
             "job_type": "abandonment_scan_job",
             "executed_at": datetime.now(timezone.utc).isoformat(),
             "status": "completed",
-            "abandoned_detected": 0,
+            "abandoned_detected": len(case_ids),
+            "created_case_ids": case_ids,
         }
 
         if job_id:
@@ -131,18 +135,22 @@ async def abandonment_scan_job(ctx: Dict[str, Any], job_id: Optional[str] = None
 
 
 async def invoice_scan_job(ctx: Dict[str, Any], job_id: Optional[str] = None) -> Dict[str, Any]:
-    """Scan for overdue invoices from Razorpay (Phase D3/A4 stub)."""
+    """Scan for overdue invoices from Razorpay (Phase D3)."""
+    from app.services.detection_service import scan_overdue_invoices
+
     session_factory = ctx.get("session_factory", SessionLocal)
     db = session_factory()
     try:
         if job_id:
             job_service.mark_running(db, job_id)
 
+        case_ids = scan_overdue_invoices(db)
         result = {
             "job_type": "invoice_scan_job",
             "executed_at": datetime.now(timezone.utc).isoformat(),
             "status": "completed",
-            "overdue_detected": 0,
+            "overdue_detected": len(case_ids),
+            "created_case_ids": case_ids,
         }
 
         if job_id:
@@ -159,18 +167,25 @@ async def invoice_scan_job(ctx: Dict[str, Any], job_id: Optional[str] = None) ->
 
 
 async def reconcile_job(ctx: Dict[str, Any], job_id: Optional[str] = None) -> Dict[str, Any]:
-    """Reconcile provider objects against the ledger (Phase E1/A4 stub)."""
+    """Reconcile provider objects against the ledger (Phase E1 & E1.2)."""
+    from app.services.reconciliation_service import check_escalation_slas, reconcile_all
+
     session_factory = ctx.get("session_factory", SessionLocal)
     db = session_factory()
     try:
         if job_id:
             job_service.mark_running(db, job_id)
 
+        reconcile_report = reconcile_all(db)
+        aging_escalations = check_escalation_slas(db)
+
         result = {
             "job_type": "reconcile_job",
             "executed_at": datetime.now(timezone.utc).isoformat(),
             "status": "completed",
-            "mismatches_found": 0,
+            "mismatches_found": reconcile_report.get("mismatches", 0),
+            "aging_escalations_count": len(aging_escalations),
+            "report": reconcile_report,
         }
 
         if job_id:
