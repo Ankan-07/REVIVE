@@ -13,9 +13,9 @@ class Settings(BaseSettings):
     )
 
     openai_api_key: str = ""
-    openai_base_url: str = ""
-    default_llm_model: str = "gpt-4o-mini"
-    diagnosis_llm_model: str = "gpt-4o"
+    openai_base_url: str = "https://integrate.api.nvidia.com/v1"
+    default_llm_model: str = "poolside/laguna-xs-2.1"
+    diagnosis_llm_model: str = "z-ai/glm-5.3-flash"
     langsmith_api_key: str = ""
     langsmith_project: str = "revenue-rescue-engine"
     langsmith_tracing: bool = True
