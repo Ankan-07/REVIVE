@@ -31,3 +31,8 @@ human_approval:
 # Hard stop on total graph loops per case, mirrored from settings.max_agent_iterations so the
 # policy layer alone can guarantee termination (PRD §21).
 max_attempts: 6
+
+outcome_wait:
+  # Bounded wait window (in hours) before an un-captured payment link / order times out (PRD §37).
+  wait_hours: 4
+

@@ -71,6 +71,12 @@ def max_attempts() -> int:
     return int(load_policy().get("max_attempts", 6))
 
 
+def outcome_wait_hours() -> int:
+    """Bounded wait window (in hours) before an un-captured outcome times out (PRD §37)."""
+    return int(load_policy().get("outcome_wait", {}).get("wait_hours", 4))
+
+
+
 @traceable(name="policy.evaluate", run_type="tool")
 def evaluate(
     action: str,
