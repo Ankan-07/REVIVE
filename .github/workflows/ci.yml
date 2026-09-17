@@ -83,6 +83,9 @@ jobs:
         env:
           APP_ENV: local
           SIMULATION_SEED: 42
+          RAZORPAY_KEY_ID: rzp_test_placeholder_ci
+          RAZORPAY_KEY_SECRET: placeholder_ci_secret
+          RAZORPAY_WEBHOOK_SECRET: placeholder_ci_webhook_secret
         run: |
           uv run pytest -v
 

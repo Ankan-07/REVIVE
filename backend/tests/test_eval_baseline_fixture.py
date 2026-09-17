@@ -44,13 +44,13 @@ def test_eval_baseline_seed42_matches_fixture():
         # Compare metrics and baseline
         assert sim_run.metrics_json == expected["metrics_json"]
 
-        # Specifically verify baseline metrics anchor values
+        # Specifically verify baseline metrics anchor values (Phase E3 refrozen anchor)
         baseline = sim_run.metrics_json["baseline"]
         assert baseline["strategy"] == "BASELINE"
-        assert baseline["cases_processed"] == 14
-        assert baseline["recovered_count"] == 4
-        assert baseline["gross_recovered"] == 5850.81
-        assert baseline["cost_total"] == 80.0
-        assert baseline["recovery_rate"] == 0.2857
+        assert baseline["cases_processed"] == 12
+        assert baseline["recovered_count"] == 1
+        assert baseline["gross_recovered"] == 659.28
+        assert baseline["cost_total"] == 88.0
+        assert baseline["recovery_rate"] == 0.0833
     finally:
         session.close()

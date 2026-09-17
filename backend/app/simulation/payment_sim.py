@@ -19,7 +19,6 @@ from sqlalchemy.orm import Session
 
 from app.models.payment import Payment
 from app.models.customer import Customer
-from app.models.metric import GatewayMetric
 from app.schemas.enums import InterventionType
 from app.observability import traceable
 

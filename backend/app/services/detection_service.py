@@ -7,7 +7,7 @@ Scans external provider states and webhooks to detect:
 from __future__ import annotations
 
 import logging
-from typing import List, Optional
+from typing import List
 
 from sqlalchemy.orm import Session
 

@@ -7,7 +7,7 @@ unassigned escalations against SLA deadlines.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import timezone
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
@@ -15,12 +15,11 @@ from sqlalchemy.orm import Session
 from app.audit import recorder
 from app.config import settings
 from app.db import utc_now
-from app.models.case import RevenueRiskCase
 from app.models.escalation import Escalation
 from app.models.outcome import RecoveryOutcome
 from app.models.provider_object import ProviderObject
 from app.observability import traceable
-from app.schemas.enums import CaseStatus, EscalationReason, OutcomeType
+from app.schemas.enums import EscalationReason, OutcomeType
 from app.services import escalation_service, razorpay_service
 
 logger = logging.getLogger("revive.reconciliation")
@@ -117,7 +116,7 @@ def reconcile_all(db: Session) -> Dict[str, Any]:
                     mismatches.append(mismatch_entry)
 
                     # Open escalation row
-                    esc = escalation_service.create_escalation(
+                    escalation_service.create_escalation(
                         db,
                         case_id=case_id,
                         reason=EscalationReason.RECONCILIATION_MISMATCH.value,

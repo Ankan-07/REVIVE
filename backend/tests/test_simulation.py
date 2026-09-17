@@ -71,7 +71,7 @@ def test_rerun_on_same_db_appends_without_collision(db_session):
 
     assert res["payments_created"] == 40
     assert db_session.query(Payment).count() == before_payments + 40
-    assert db_session.query(GatewayMetric).count() == before_gateways + 3
+    assert db_session.query(GatewayMetric).count() == before_gateways + 1
 
     payment_ids = [r[0] for r in db_session.query(Payment.id).all()]
     assert len(payment_ids) == len(set(payment_ids))  # no duplicate primary keys across runs
@@ -105,20 +105,17 @@ def test_failure_mix_proportions(db_session):
     assert abs(total_failed / n - 0.10) < 0.04
 
 
-def test_gateway_health_one_degraded(db_session):
+def test_gateway_health_razorpay_sole_gateway(db_session):
     res = run_simulation(db_session, seed=42, customer_count=10, payment_count=50)
 
     metrics = db_session.query(GatewayMetric).all()
-    assert len(metrics) == 3
-    degraded = [m for m in metrics if m.health_status == "DEGRADED"]
-    healthy = [m for m in metrics if m.health_status == "HEALTHY"]
-    assert len(degraded) == 1
-    assert len(healthy) == 2
-    assert degraded[0].success_rate < 0.80
-    assert all(m.success_rate > 0.90 for m in healthy)
-    # baseline is populated so diagnosis can compare current vs baseline later
-    assert all(m.baseline_success_rate is not None for m in metrics)
-    assert len(res["gateways"]) == 3
+    assert len(metrics) == 1
+    assert metrics[0].gateway_name == "RAZORPAY"
+    assert metrics[0].health_status == "HEALTHY"
+    assert metrics[0].success_rate > 0.90
+    assert metrics[0].baseline_success_rate is not None
+    assert len(res["gateways"]) == 1
+    assert res["gateways"][0]["gateway"] == "RAZORPAY"
 
 
 def test_orders_created_and_linked(db_session):

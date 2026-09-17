@@ -30,6 +30,29 @@ def default_auth_override(request):
         app.dependency_overrides.pop(get_current_auth, None)
 
 
+@pytest.fixture(autouse=True)
+def fallback_razorpay_keys(monkeypatch, request):
+    """Fallback placeholder test keys when real keys are absent.
+    
+    If real keys are present in the environment or .env, they are preserved as primary.
+    Only when absent do we provide mock test keys starting with 'rzp_test_'.
+    Excluded for test files that test missing keys explicitly.
+    """
+    test_file = request.node.fspath.basename
+    if test_file == "test_razorpay_fallback.py":
+        yield
+        return
+
+    import os
+    if not os.getenv("RAZORPAY_KEY_ID"):
+        monkeypatch.setenv("RAZORPAY_KEY_ID", "rzp_test_placeholder_key")
+    if not os.getenv("RAZORPAY_KEY_SECRET"):
+        monkeypatch.setenv("RAZORPAY_KEY_SECRET", "placeholder_secret_xyz")
+    if not os.getenv("RAZORPAY_WEBHOOK_SECRET"):
+        monkeypatch.setenv("RAZORPAY_WEBHOOK_SECRET", "placeholder_webhook_sec")
+    yield
+
+
 @pytest.fixture
 def factory():
     """A session factory bound to a fresh in-memory DB for hermetic test execution."""

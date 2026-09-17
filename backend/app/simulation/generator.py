@@ -32,7 +32,7 @@ from app.simulation.baseline import evaluate_baseline_strategy
 # Fixed reference point so generated timestamps are deterministic (never wall-clock).
 SIM_EPOCH = datetime(2026, 1, 1)
 
-GATEWAYS = ["STRIPE", "RAZORPAY", "PAYU"]
+GATEWAYS = ["RAZORPAY"]
 
 # Calibrated failure mix (PRD §26): cumulative thresholds over a single uniform draw.
 P_INSUFFICIENT_FUNDS = 0.05          # f < 0.05
@@ -74,22 +74,15 @@ def run_simulation(
 
         return next_id
 
-    # --- Gateway health: pick one gateway to be degraded (drives the switch_gateway demo) ---
-    degraded_gateway = rng.choice(GATEWAYS)
+    # --- Gateway health: Razorpay is the sole provider in the production-aligned simulation ---
     gateway_rates: Dict[str, float] = {}
     gateway_snapshot: List[Dict[str, Any]] = []
     gw_id = make_sequence(GatewayMetric, "GWM")
     for name in GATEWAYS:
-        if name == degraded_gateway:
-            success_rate = round(rng.uniform(0.65, 0.75), 4)
-            baseline = round(rng.uniform(0.96, 0.98), 4)
-            latency = round(rng.uniform(800.0, 1500.0), 1)
-            health_status = "DEGRADED"
-        else:
-            success_rate = round(rng.uniform(0.95, 0.98), 4)
-            baseline = round(rng.uniform(0.96, 0.98), 4)
-            latency = round(rng.uniform(80.0, 250.0), 1)
-            health_status = "HEALTHY"
+        success_rate = round(rng.uniform(0.95, 0.98), 4)
+        baseline = round(rng.uniform(0.96, 0.98), 4)
+        latency = round(rng.uniform(80.0, 250.0), 1)
+        health_status = "HEALTHY"
         gateway_rates[name] = success_rate
         gateway_snapshot.append(
             {
@@ -167,21 +160,18 @@ def run_simulation(
         order_id = rng.choice(cust_orders) if (cust_orders and rng.random() < 0.7) else None
 
         f = rng.random()
+        gateway = "RAZORPAY"
         if f < P_INSUFFICIENT_FUNDS:
             status, error_code = PaymentStatus.FAILED.value, "insufficient_funds"
-            gateway = rng.choice(GATEWAYS)
             method_health = round(rng.uniform(0.20, 0.50), 4)
         elif f < P_TIMEOUT:
             status, error_code = PaymentStatus.FAILED.value, "timeout"
-            gateway = degraded_gateway  # timeouts concentrate on the degraded gateway
-            method_health = round(rng.uniform(0.85, 0.98), 4)
+            method_health = round(rng.uniform(0.20, 0.45), 4)
         elif f < P_EXPIRED_CARD:
             status, error_code = PaymentStatus.FAILED.value, "expired_card"
-            gateway = rng.choice(GATEWAYS)
             method_health = round(rng.uniform(0.00, 0.10), 4)
         else:
             status, error_code = PaymentStatus.SUCCEEDED.value, None
-            gateway = rng.choice(GATEWAYS)
             method_health = round(rng.uniform(0.85, 1.00), 4)
 
         error_message = None if error_code is None else f"Payment failed due to {error_code}"
@@ -305,7 +295,7 @@ def run_simulation(
             "payment_count": payment_count,
             "checkout_count": checkout_count,
             "invoice_count": invoice_count,
-            "degraded_gateway": degraded_gateway,
+            "degraded_gateway": None,
         },
         metrics_json=metrics_json,
         status="COMPLETED",

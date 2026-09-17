@@ -11,40 +11,28 @@
     "invoices_created": 30,
     "cases_created": 0,
     "failed_by_reason": {
-      "insufficient_funds": 6,
-      "timeout": 7,
-      "expired_card": 1
+      "insufficient_funds": 4,
+      "timeout": 5,
+      "expired_card": 3
     },
     "gateways": [
       {
-        "gateway": "STRIPE",
-        "success_rate": 0.9533,
-        "baseline_success_rate": 0.9748,
-        "health_status": "HEALTHY"
-      },
-      {
         "gateway": "RAZORPAY",
-        "success_rate": 0.9542,
-        "baseline_success_rate": 0.962,
+        "success_rate": 0.9692,
+        "baseline_success_rate": 0.9605,
         "health_status": "HEALTHY"
-      },
-      {
-        "gateway": "PAYU",
-        "success_rate": 0.7045,
-        "baseline_success_rate": 0.9718,
-        "health_status": "DEGRADED"
       }
     ],
-    "amount_at_risk": 13537.23,
+    "amount_at_risk": 16904.75,
     "ground_truth": {
-      "failed": 14,
-      "recoverable_by_retry": 4,
-      "recoverable_by_switch": 5,
-      "recoverable_by_link": 12,
-      "unrecoverable": 2
+      "failed": 12,
+      "recoverable_by_retry": 1,
+      "recoverable_by_switch": 1,
+      "recoverable_by_link": 6,
+      "unrecoverable": 6
     },
     "metrics": {
-      "failed_payments": 14
+      "failed_payments": 12
     }
   },
   "metrics_json": {
@@ -54,51 +42,39 @@
       "payments": 100,
       "checkouts": 30,
       "invoices": 30,
-      "succeeded": 86,
-      "failed": 14
+      "succeeded": 88,
+      "failed": 12
     },
     "failed_by_reason": {
-      "insufficient_funds": 6,
-      "timeout": 7,
-      "expired_card": 1
+      "insufficient_funds": 4,
+      "timeout": 5,
+      "expired_card": 3
     },
     "gateways": [
       {
-        "gateway": "STRIPE",
-        "success_rate": 0.9533,
-        "baseline_success_rate": 0.9748,
-        "health_status": "HEALTHY"
-      },
-      {
         "gateway": "RAZORPAY",
-        "success_rate": 0.9542,
-        "baseline_success_rate": 0.962,
+        "success_rate": 0.9692,
+        "baseline_success_rate": 0.9605,
         "health_status": "HEALTHY"
-      },
-      {
-        "gateway": "PAYU",
-        "success_rate": 0.7045,
-        "baseline_success_rate": 0.9718,
-        "health_status": "DEGRADED"
       }
     ],
-    "amount_at_risk": 13537.23,
+    "amount_at_risk": 16904.75,
     "ground_truth": {
-      "failed": 14,
-      "recoverable_by_retry": 4,
-      "recoverable_by_switch": 5,
-      "recoverable_by_link": 12,
-      "unrecoverable": 2
+      "failed": 12,
+      "recoverable_by_retry": 1,
+      "recoverable_by_switch": 1,
+      "recoverable_by_link": 6,
+      "unrecoverable": 6
     },
     "baseline": {
       "strategy": "BASELINE",
-      "cases_processed": 14,
-      "recovered_count": 4,
+      "cases_processed": 12,
+      "recovered_count": 1,
       "escalation_count": 0,
-      "gross_recovered": 5850.81,
-      "net_recovered": 5850.81,
-      "cost_total": 80.0,
-      "recovery_rate": 0.2857,
+      "gross_recovered": 659.28,
+      "net_recovered": 659.28,
+      "cost_total": 88.0,
+      "recovery_rate": 0.0833,
       "escalation_rate": 0.0
     }
   }
