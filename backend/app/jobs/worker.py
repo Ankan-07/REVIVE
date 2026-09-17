@@ -211,6 +211,63 @@ async def process_webhook_event_job(ctx: Dict[str, Any], event_id: str, job_id: 
         db.close()
 
 
+async def check_outcome_timeouts_job(ctx: Dict[str, Any], job_id: Optional[str] = None) -> Dict[str, Any]:
+    """Scan cases parked in WAITING_FOR_OUTCOME that exceeded policy outcome_wait_hours (Phase B4.2)."""
+    from app.models.case import RevenueRiskCase
+    from app.schemas.enums import CaseStatus
+    from app.policies.engine import outcome_wait_hours
+    from app.agent.runner import resume_agent_outcome
+
+    session_factory = ctx.get("session_factory", SessionLocal)
+    db = session_factory()
+    try:
+        if job_id:
+            job_service.mark_running(db, job_id)
+
+        wait_hours = outcome_wait_hours()
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=wait_hours)
+
+        waiting_cases = (
+            db.query(RevenueRiskCase)
+            .filter(
+                RevenueRiskCase.status == CaseStatus.WAITING_FOR_OUTCOME.value,
+                RevenueRiskCase.updated_at < cutoff,
+            )
+            .all()
+        )
+
+        resumed_count = 0
+        for c in waiting_cases:
+            try:
+                resume_agent_outcome(
+                    c.id,
+                    {
+                        "recovered": False,
+                        "expired": True,
+                        "reason": "timeout",
+                        "verified_via": "outcome_wait_timeout",
+                    },
+                    session_factory=session_factory,
+                    caller="timeout_worker",
+                )
+                resumed_count += 1
+            except Exception as exc:
+                logger.warning(f"Error resuming timed-out case {c.id}: {exc}")
+
+        result = {"cases_checked": len(waiting_cases), "resumed_count": resumed_count, "wait_hours": wait_hours}
+        if job_id:
+            job_service.mark_completed(db, job_id, result=result)
+        return result
+    except Exception as exc:
+        tb = traceback.format_exc()
+        logger.error(f"check_outcome_timeouts_job failed: {exc}\n{tb}")
+        if job_id:
+            job_service.mark_failed(db, job_id, error_message=str(exc), traceback_str=tb, increment_retry=True)
+        raise exc
+    finally:
+        db.close()
+
+
 async def on_startup(ctx: Dict[str, Any]) -> None:
     """Worker initialization, config validation (A5.1/A5.2), and missed-run catch-up detection (A4.4)."""
     validate_environment(settings)
@@ -266,6 +323,7 @@ class WorkerSettings:
         invoice_scan_job,
         reconcile_job,
         process_webhook_event_job,
+        check_outcome_timeouts_job,
     ]
 
     cron_jobs = [
@@ -273,6 +331,7 @@ class WorkerSettings:
         cron(verify_promises_job, minute=0),         # Hourly at :00
         cron(abandonment_scan_job, minute=15),       # Hourly at :15
         cron(invoice_scan_job, minute=45),           # Hourly at :45
+        cron(check_outcome_timeouts_job, minute=30), # Hourly at :30
     ]
 
     on_startup = on_startup
