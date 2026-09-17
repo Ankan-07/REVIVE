@@ -94,6 +94,8 @@ def live_retry_payment(
     cost = cost_of(InterventionType.RETRY_PAYMENT.value)
     payload_data = {
         "success": True,
+        "action": InterventionType.RETRY_PAYMENT.value,
+        "attempt": attempt,
         "order_id": order_res["order_id"],
         "amount": order_res["amount"],
         "provider": "razorpay",
@@ -159,9 +161,11 @@ def live_create_payment_link(
     cost = cost_of(InterventionType.CREATE_PAYMENT_LINK.value)
     payload_data = {
         "success": True,
-        "payment_link_id": link_res["payment_link_id"],
-        "short_url": link_res["short_url"],
-        "amount": link_res["amount"],
+        "action": InterventionType.CREATE_PAYMENT_LINK.value,
+        "attempt": attempt,
+        "payment_link_id": link_res.get("payment_link_id") or link_res.get("id", ""),
+        "short_url": link_res.get("short_url", ""),
+        "amount": link_res.get("amount", 0.0),
         "provider": "razorpay",
     }
 
@@ -177,7 +181,7 @@ def live_create_payment_link(
     return ToolResult(
         tool=InterventionType.CREATE_PAYMENT_LINK.value,
         success=True,
-        detail=f"Created Razorpay payment link {link_res['payment_link_id']}",
+        detail=f"Created Razorpay payment link {payload_data['payment_link_id']}",
         data=payload_data,
     )
 
