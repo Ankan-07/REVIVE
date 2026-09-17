@@ -58,3 +58,10 @@ def get_baseline_comparison(
     Get the comparison metrics between the naive baseline strategy and the REVIVE agent strategy.
     """
     return analytics_service.get_baseline_comparison(db=db, seed=seed)
+
+
+@router.get("/reconciliation")
+def get_reconciliation_report(db: Session = Depends(get_db)):
+    """Get the latest nightly reconciliation report and current aging escalations (Phase E1)."""
+    from app.services import reconciliation_service
+    return reconciliation_service.get_latest_reconciliation_report(db)

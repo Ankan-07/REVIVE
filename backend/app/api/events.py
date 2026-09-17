@@ -26,6 +26,11 @@ def detect_failed_payments(db: Session = Depends(get_db)):
     The detector posts events back to this same API over HTTP (`internal_api_base_url`), so the
     server must be running to serve the nested requests. Idempotent: re-running creates no duplicates.
     """
+    if settings.app_env.lower() == "prod":
+        raise HTTPException(
+            status_code=403,
+            detail="HTTP self-POST detector is disabled in production environment. Real signals are ingested via Razorpay webhooks.",
+        )
     with httpx.Client(base_url=settings.internal_api_base_url, timeout=30.0) as client:
         summary = emit_failed_payment_events(db, client)
     return summary

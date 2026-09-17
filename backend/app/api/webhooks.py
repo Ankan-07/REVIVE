@@ -121,10 +121,20 @@ async def receive_razorpay_webhook(
     # 4. Parse JSON payload
     try:
         payload = json.loads(raw_body.decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("Payload must be a JSON object")
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Malformed JSON payload: {exc}",
+        )
+
+    # 4.1 Schema validation (Phase D4)
+    event_type = payload.get("event")
+    if not event_type or not isinstance(event_type, str):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Webhook schema validation failed: missing or invalid 'event' field.",
         )
 
     # 5. Extract event identifiers
@@ -132,8 +142,6 @@ async def receive_razorpay_webhook(
     if not event_id:
         # Fallback to deterministic SHA-256 hash of raw body if provider event id is omitted
         event_id = f"evt_{hashlib.sha256(raw_body).hexdigest()[:24]}"
-
-    event_type = payload.get("event", "unknown")
 
     # 6. Race-safe synchronous deduplication (B1.2)
     event_pk_id, is_new, is_processed = provider_event_service.record_raw_event(

@@ -34,7 +34,13 @@ def _apply_case_filters(
         query = query.filter(RevenueRiskCase.created_at <= end_date)
     if case_type:
         query = query.filter(RevenueRiskCase.case_type == case_type)
-    if origin:
+    if not origin:
+        from app.config import settings
+        if settings.app_env.lower() == "prod":
+            raise ValueError(
+                "[E2 Quarantine] An explicit origin filter is required in production to prevent mixing live and lab metrics."
+            )
+    else:
         query = query.filter(RevenueRiskCase.origin == origin)
     return query
 
