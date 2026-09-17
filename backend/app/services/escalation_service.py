@@ -1,8 +1,10 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
+from app.config import settings
+from app.db import utc_now
 from app.domain.ids import generate_id
 from app.models.escalation import Escalation
 
@@ -34,6 +36,9 @@ def create_escalation(
         return existing
         
     escalation_id = generate_id("ESC", db)
+    now = utc_now()
+    sla_hours = getattr(settings, "sla_escalation_hours", 4)
+    sla_due_at = now + timedelta(hours=sla_hours)
     esc = Escalation(
         id=escalation_id,
         case_id=case_id,
@@ -41,7 +46,9 @@ def create_escalation(
         priority=priority,
         recommended_action=recommended_action,
         notes=notes,
-        status="OPEN"
+        status="OPEN",
+        created_at=now,
+        sla_due_at=sla_due_at,
     )
     db.add(esc)
     db.commit()

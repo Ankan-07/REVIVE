@@ -53,9 +53,10 @@ class Settings(BaseSettings):
     twilio_auth_token: str = ""
     twilio_from_number: str = ""
 
-    # Alerting (Phase A3.5 — used by B1 webhook HMAC spike detection)
+    # Alerting (Phase A3.5 / E1.2)
     admin_alert_email: str = ""  # e.g. ops@yourdomain.com
     hmac_failure_alert_threshold: int = 10  # alert if > N failures in 5 min
+    sla_escalation_hours: int = 4  # alert if unassigned escalation exceeds this age (Phase E1.2)
 
     # Worker / Redis (Phase A4)
     redis_url: str = "redis://redis:6379"
