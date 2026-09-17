@@ -14,4 +14,5 @@ class Escalation(Base):
     notes = Column(Text, nullable=True)
     status = Column(String, nullable=False, default="OPEN")  # OPEN, RESOLVED, REJECTED
     created_at = Column(DateTime, default=utc_now)
+    sla_due_at = Column(DateTime, nullable=True)
     resolved_at = Column(DateTime, nullable=True)
