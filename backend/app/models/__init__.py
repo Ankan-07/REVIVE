@@ -18,6 +18,7 @@ from app.models.provider_event import ProviderEvent
 from app.models.provider_object import ProviderObject
 from app.models.api_key import ApiKey, KeyUsageEvent
 from app.models.job import Job
+from app.models.case_run_lock import CaseRunLock
 
 __all__ = [
     "Customer",
@@ -41,4 +42,5 @@ __all__ = [
     "ApiKey",
     "KeyUsageEvent",
     "Job",
+    "CaseRunLock",
 ]
