@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ENV_FILE_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     # When True, POST /cases/{id}/run-agent runs synchronously (dev/test convenience).
     # When False (production background mode), it enqueues to ARQ and returns 202 Accepted.
     sync_run_agent: bool = True
+
+    # Serverless Cron Secret (Phase G1)
+    cron_secret: Optional[str] = None
 
     # Vite dev server hops to the next free port (5173 -> 5174 -> ...) when one is taken, so allow
     # the common local dev ports for both hostnames rather than pinning a single one.

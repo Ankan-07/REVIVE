@@ -1,0 +1,81 @@
+name: REVIVE Serverless Cron Runner
+
+on:
+  schedule:
+    # 1. Routine checks (Abandonment, Invoices, Promises, Timeouts) every 30 minutes
+    - cron: '*/30 * * * *'
+    # 2. Nightly Reconciliation audit daily at 03:00 UTC
+    - cron: '0 3 * * *'
+
+  # Allows manual 1-click execution from GitHub Actions tab
+  workflow_dispatch:
+    inputs:
+      job:
+        description: 'Job to execute'
+        required: true
+        default: 'tick'
+        type: choice
+        options:
+          - tick
+          - abandonment-scan
+          - invoice-scan
+          - verify-promises
+          - reconcile
+          - outcome-timeouts
+
+jobs:
+  run-cron:
+    name: Trigger REVIVE Scheduled Task
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate Secrets
+        run: |
+          if [ -z "${{ secrets.REVIVE_API_BASE_URL }}" ]; then
+            echo "::error::Secret REVIVE_API_BASE_URL is not set in repository settings."
+            exit 1
+          fi
+          if [ -z "${{ secrets.REVIVE_CRON_SECRET }}" ]; then
+            echo "::error::Secret REVIVE_CRON_SECRET is not set in repository settings."
+            exit 1
+          fi
+
+      - name: Determine Endpoint
+        id: target
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ENDPOINT="${{ github.event.inputs.job }}"
+          elif [ "${{ github.event.schedule }}" = "0 3 * * *" ]; then
+            ENDPOINT="reconcile"
+          else
+            ENDPOINT="tick"
+          fi
+          echo "endpoint=$ENDPOINT" >> $GITHUB_OUTPUT
+
+      - name: Trigger Task via HTTP POST
+        run: |
+          BASE_URL="${{ secrets.REVIVE_API_BASE_URL }}"
+          # Strip trailing slash if present
+          BASE_URL="${BASE_URL%/}"
+          TARGET_URL="${BASE_URL}/cron/${{ steps.target.outputs.endpoint }}"
+
+          echo "Dispatching authenticated request to: ${TARGET_URL}"
+          
+          RESPONSE=$(curl -sS -X POST "${TARGET_URL}" \
+            -H "X-Cron-Secret: ${{ secrets.REVIVE_CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            --connect-timeout 20 \
+            --max-time 120 \
+            --retry 2 \
+            --retry-delay 5 \
+            -w "\nHTTP_STATUS:%{http_code}")
+
+          HTTP_BODY=$(echo "$RESPONSE" | sed -e '$d')
+          HTTP_STATUS=$(echo "$RESPONSE" | tail -n1 | sed 's/HTTP_STATUS://')
+
+          echo "Response Status: ${HTTP_STATUS}"
+          echo "Response Body: ${HTTP_BODY}"
+
+          if [ "$HTTP_STATUS" -ne 200 ]; then
+            echo "::error::Cron job trigger failed with HTTP status ${HTTP_STATUS}"
+            exit 1
+          fi

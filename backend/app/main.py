@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings, validate_environment
 from contextlib import asynccontextmanager
-from app.api import health, simulation, events, cases, escalations, analytics, jobs, checkout, auth, webhooks
+from app.api import health, simulation, events, cases, escalations, analytics, jobs, checkout, auth, webhooks, cron
 
 
 @asynccontextmanager
@@ -67,6 +67,7 @@ app.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
 app.include_router(jobs.router)
 app.include_router(checkout.router)
 app.include_router(webhooks.router)
+app.include_router(cron.router)
 
 
 @app.get("/")

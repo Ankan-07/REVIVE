@@ -1,0 +1,5 @@
+# Cloudflare Pages / Netlify SPA Routing & API Proxy Rule
+# 
+# 1. SPA Client-Side Routing:
+# Ensures refreshing routes like /cases, /analytics, or /login load index.html without 404s.
+/*    /index.html   200
