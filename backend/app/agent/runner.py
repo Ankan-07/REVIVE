@@ -44,7 +44,7 @@ def _default_checkpointer():
             if conn_str.startswith("postgresql+psycopg://"):
                 conn_str = "postgresql://" + conn_str[len("postgresql+psycopg://"):]
             
-            conn = psycopg.connect(conn_str, autocommit=True)
+            conn = psycopg.connect(conn_str, autocommit=True, prepare_threshold=None)
             saver = PostgresSaver(conn)
             saver.setup()
             return saver
