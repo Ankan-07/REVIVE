@@ -29,6 +29,7 @@ class SessionResponse(BaseModel):
     name: str
     scopes: List[str]
     expires_in_seconds: int
+    token: str
 
 
 class UserProfileResponse(BaseModel):
@@ -62,9 +63,10 @@ def login_session(
     response: Response,
     db: Session = Depends(get_db),
 ):
-    """Exchange a valid operator API key for a secure, short-lived httpOnly session cookie.
+    """Exchange a valid operator API key for a secure, short-lived session token and cookie.
     
-    The raw API key is never stored in browser localStorage or exposed to client-side JS (A2.5).
+    Returns the session token for client-side Bearer authorization across domains,
+    and also sets an httpOnly session cookie for same-site / cookie-enabled contexts.
     """
     key = api_key_service.verify_key(db, body.api_key)
     if not key:
@@ -77,13 +79,16 @@ def login_session(
     token = create_session_token(key.id, key.name, scopes)
 
     is_prod = settings.app_env.lower() == "prod"
+    # In production/cross-site environments, SameSite must be "none" with secure=True
+    # In local development over plain HTTP, SameSite="lax" with secure=False is used
+    samesite_val = "none" if is_prod else "lax"
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=token,
         max_age=settings.session_ttl_seconds,
         httponly=True,
         secure=is_prod,
-        samesite="lax",
+        samesite=samesite_val,
     )
 
     return SessionResponse(
@@ -91,6 +96,7 @@ def login_session(
         name=key.name,
         scopes=scopes,
         expires_in_seconds=settings.session_ttl_seconds,
+        token=token,
     )
 
 

@@ -4,11 +4,40 @@ export interface HealthResponse {
   status: string;
 }
 
+const TOKEN_STORAGE_KEY = 'revive_auth_token';
+
+export function getAuthToken(): string | null {
+  try {
+    return sessionStorage.getItem(TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setAuthToken(token: string | null): void {
+  try {
+    if (token) {
+      sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
+    } else {
+      sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+    }
+  } catch {
+    // sessionStorage unavailable
+  }
+}
+
 /** Shared JSON fetch against the API base URL, with a human-readable error on non-2xx. */
 export async function apiFetch<T>(path: string, init?: RequestInit, label?: string): Promise<T> {
+  const headers = new Headers(init?.headers);
+  const token = getAuthToken();
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
   const options: RequestInit = {
     credentials: 'include',
     ...init,
+    headers,
   };
   const res = await fetch(`${API_BASE_URL}${path}`, options);
   if (!res.ok) {

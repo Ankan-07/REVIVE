@@ -97,8 +97,27 @@ def get_current_auth(
     elif x_api_key:
         raw_key = x_api_key.strip()
 
-    # 1. API Key Auth
+    # 1. Bearer / Header Auth (Supports signed session tokens and raw API keys)
     if raw_key:
+        # Check if raw_key is a signed session token
+        session_data = decode_session_token(raw_key)
+        if session_data:
+            key_record = api_key_service.get_key_by_id(db, session_data["key_id"])
+            if not key_record or key_record.revoked:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Session revoked",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            scopes = set(session_data.get("scopes", []))
+            return AuthContext(
+                key_id=session_data["key_id"],
+                name=session_data.get("name", "Unknown Operator"),
+                scopes=scopes,
+                is_session=True,
+            )
+
+        # Otherwise verify as raw service API key
         api_key = api_key_service.verify_key(db, raw_key)
         if not api_key:
             raise HTTPException(
