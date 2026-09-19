@@ -254,3 +254,18 @@ def test_recovery_and_intervention_endpoints_over_http(db_session, client):
     assert stats[0]["intervention_type"] == InterventionType.SEND_DISCOUNT_MESSAGE.value
     assert stats[0]["count"] == 1
     assert stats[0]["total_cost"] == 5.0
+
+
+def test_analytics_endpoints_in_prod_default_to_live(db_session, client, monkeypatch):
+    """In production (APP_ENV=prod), HTTP analytics endpoints should default to origin='live'
+    instead of throwing unhandled 500 ValueError when origin parameter is omitted by client."""
+    from app.config import settings
+    monkeypatch.setattr(settings, "app_env", "prod")
+
+    resp_recovery = client.get("/analytics/recovery")
+    assert resp_recovery.status_code == 200, resp_recovery.text
+    assert resp_recovery.json()["total_cases"] == 0
+
+    resp_interventions = client.get("/analytics/interventions")
+    assert resp_interventions.status_code == 200, resp_interventions.text
+    assert resp_interventions.json()["stats"] == []

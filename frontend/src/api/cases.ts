@@ -55,8 +55,9 @@ export function getCase(caseId: string): Promise<RevenueRiskCaseRead> {
   return apiFetch(`/cases/${caseId}`, undefined, 'Failed to fetch case');
 }
 
-export function listCases(skip: number = 0, limit: number = 100): Promise<RevenueRiskCaseRead[]> {
-  return apiFetch(`/cases?skip=${skip}&limit=${limit}`, undefined, 'Failed to list cases');
+export function listCases(skip: number = 0, limit: number = 100, origin?: string): Promise<RevenueRiskCaseRead[]> {
+  const originParam = origin ? `&origin=${encodeURIComponent(origin)}` : '';
+  return apiFetch(`/cases?skip=${skip}&limit=${limit}${originParam}`, undefined, 'Failed to list cases');
 }
 
 export function getCaseAudit(caseId: string): Promise<TimelineEntry[]> {

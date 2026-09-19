@@ -9,23 +9,53 @@ import { Activity, DollarSign, ShieldAlert, TrendingUp, AlertCircle } from 'luci
 import { cn } from '../lib/utils';
 
 export function Dashboard() {
+  const [origin, setOrigin] = React.useState<'live' | 'lab'>('live');
+
   const { data: totals, isLoading: loadingTotals, isError: isTotalsError, error: totalsError } = useQuery({
-    queryKey: ['recoveryTotals'],
-    queryFn: () => fetchRecoveryTotals()
+    queryKey: ['recoveryTotals', origin],
+    queryFn: () => fetchRecoveryTotals(undefined, undefined, undefined, origin)
   });
 
   const { data: interventions, isLoading: loadingInterventions, isError: isInterventionsError } = useQuery({
-    queryKey: ['interventionStats'],
-    queryFn: () => fetchInterventionStats()
+    queryKey: ['interventionStats', origin],
+    queryFn: () => fetchInterventionStats(undefined, undefined, undefined, origin)
   });
 
   const { data: cases, isLoading: loadingCases, isError: isCasesError } = useQuery({
-    queryKey: ['cases', { skip: 0, limit: 10 }],
-    queryFn: () => listCases(0, 10)
+    queryKey: ['cases', { skip: 0, limit: 10, origin }],
+    queryFn: () => listCases(0, 10, origin)
   });
 
   return (
     <div className="space-y-6">
+      {/* Dashboard Header & Environment Switcher */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-white tracking-tight">Recovery Operations Dashboard</h1>
+          <p className="text-xs text-slate-400 mt-0.5">Real-time metrics, automated interventions, and case resolution ledger.</p>
+        </div>
+        <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-1 rounded-xl text-xs font-semibold self-start sm:self-auto">
+          <button
+            onClick={() => setOrigin('live')}
+            className={cn(
+              'px-3 py-1 rounded-lg transition cursor-pointer',
+              origin === 'live' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'text-slate-400 hover:text-slate-200'
+            )}
+          >
+            ● Live Cases
+          </button>
+          <button
+            onClick={() => setOrigin('lab')}
+            className={cn(
+              'px-3 py-1 rounded-lg transition cursor-pointer',
+              origin === 'lab' ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30' : 'text-slate-400 hover:text-slate-200'
+            )}
+          >
+            Simulation Lab
+          </button>
+        </div>
+      </div>
+
       {/* Top Level Metrics */}
       {isTotalsError ? (
         <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-4 rounded-xl text-sm flex items-center gap-2">

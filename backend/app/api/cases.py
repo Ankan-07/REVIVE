@@ -45,7 +45,10 @@ def list_cases_endpoint(
     origin: Optional[str] = Query(None, description="Filter by case origin (e.g. 'lab', 'live')"),
     db: Session = Depends(get_db),
 ):
-    return case_service.list_cases(db, skip=skip, limit=limit, origin=origin)
+    effective_origin = origin
+    if not effective_origin and settings.app_env.lower() == "prod":
+        effective_origin = "live"
+    return case_service.list_cases(db, skip=skip, limit=limit, origin=effective_origin)
 
 
 @router.get("/{case_id}", response_model=RevenueRiskCaseRead)

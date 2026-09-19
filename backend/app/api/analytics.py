@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.auth import require_api_key
+from app.config import settings
 from app.db import get_db
 from app.schemas.analytics import RecoveryTotalsResponse, InterventionStatsResponse, BaselineComparisonResponse
 from app.services import analytics_service, reconciliation_service
@@ -22,12 +23,16 @@ def get_recovery_totals(
     """
     Get aggregated ledger totals for recovered revenue and costs.
     """
+    effective_origin = origin
+    if not effective_origin and settings.app_env.lower() == "prod":
+        effective_origin = "live"
+
     return analytics_service.get_recovery_totals(
         db=db,
         start_date=start_date,
         end_date=end_date,
         case_type=case_type,
-        origin=origin,
+        origin=effective_origin,
     )
 
 @router.get("/interventions", response_model=InterventionStatsResponse)
@@ -41,12 +46,16 @@ def get_intervention_stats(
     """
     Get statistics grouped by intervention type.
     """
+    effective_origin = origin
+    if not effective_origin and settings.app_env.lower() == "prod":
+        effective_origin = "live"
+
     return analytics_service.get_intervention_stats(
         db=db,
         start_date=start_date,
         end_date=end_date,
         case_type=case_type,
-        origin=origin,
+        origin=effective_origin,
     )
 
 @router.get("/baseline", response_model=BaselineComparisonResponse)
